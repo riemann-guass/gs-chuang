@@ -1,0 +1,97 @@
+OK=96 FAIL=0 SKIP(no pdf)=4
+OK     1    822KB Artificial Intelligence for Mathematical Reasoning: An Integrated Survey of Language Models, Neuro-symbolic Systems, and Verified Discovery
+OK     2    423KB Autoformalization in the Era of Large Language Models: A Survey
+OK     3   2729KB A Comprehensive Survey of the Lean 4 Theorem Prover: Architecture, Applications, and Advances
+OK     4    680KB A Survey on Mathematical Reasoning and Optimization with Large Language Models
+OK     5    593KB A Survey on Deep Learning for Theorem Proving
+OK     6    364KB Learning Guided Automated Reasoning: A Brief Survey
+OK     7   1916KB Proof Assistants for Teaching: a Survey
+OK     8    924KB A Survey on Theorem Provers in Formal Methods
+OK     9    254KB A Survey of Languages for Formalizing Mathematics
+OK    10    782KB ML + FV = ♥? A Survey on the Application of Machine Learning to Formal Verification
+OK    11    783KB Superposition for Lambda-Free Higher-Order Logic
+OK    12    499KB Hierarchic Superposition Revisited
+OK    13    196KB Subsumption Demodulation in First-Order Theorem Proving
+OK    14    808KB The Vampire Diary
+OK    15    321KB Program Synthesis in Saturation
+OK    16    476KB Rewriting and Inductive Reasoning
+OK    17    345KB Getting Saturated with Induction
+OK    18    379KB Complete Trigger Selection in Satisfiability modulo first-order Theories
+OK    19    532KB SAT-Based Subsumption Resolution
+OK    20    484KB AC Simplifications and Closure Redundancies in the Superposition Calculus
+OK    23   1204KB DeepMath - Deep Sequence Models for Premise Selection
+OK    24    314KB GamePad: A Learning Environment for Theorem Proving
+OK    25    267KB HOList: An Environment for Machine Learning of Higher-Order Theorem Proving
+OK    26   1041KB Learning to Prove Theorems via Interacting with Proof Assistants
+OK    27    517KB Learning to Prove Theorems by Learning to Generate Theorems
+OK    28    538KB Generative Language Modeling for Automated Theorem Proving
+OK    29    479KB Proof Artifact Co-training for Theorem Proving with Language Models
+OK    30    686KB Thor: Wielding Hammers to Integrate Language Models and Automated Theorem Provers
+OK    31    428KB Autoformalization with Large Language Models
+OK    32   2949KB Draft, Sketch, and Prove: Guiding Formal Theorem Provers with Informal Proofs
+OK    33   1276KB Magnushammer: A Transformer-Based Approach to Premise Selection
+OK    34    783KB Baldur: Whole-Proof Generation and Repair with Large Language Models
+OK    35   2898KB LeanDojo: Theorem Proving with Retrieval-Augmented Language Models
+OK    36   2889KB LEGO-Prover: Neural Theorem Proving with Growing Libraries
+OK    37    974KB Lean Copilot: Large Language Models as Copilots for Theorem Proving in Lean
+OK    38    587KB DeepSeek-Prover: Advancing Theorem Proving in LLMs through Large-Scale Synthetic Data
+OK    39   1508KB TheoremLlama: Transforming General-Purpose LLMs into Lean4 Experts
+OK    40   3930KB Lean-STaR: Learning to Interleave Thinking and Proving
+OK    41    704KB InternLM2.5-StepProver: Advancing Automated Theorem Proving via Critic-Guided Search
+OK    42   1842KB DeepSeek-Prover-V2: Advancing Formal Mathematical Reasoning via Reinforcement Learning for Subgoal Decomposition
+OK    43    892KB The Lean mathematical library
+OK    44   1196KB Lean-auto: An Interface between Lean 4 and Automated Theorem Provers
+OK    45    327KB Compositional pre-processing for automated reasoning in dependent type theory
+OK    46    878KB Trocq: Proof Transfer for Free, With or Without Univalence
+OK    47   1267KB ProofAug: Efficient Neural Theorem Proving via Fine-grained Proof Structure Analysis
+OK    48   1185KB Lean-SMT: An SMT tactic for discharging proof goals in Lean
+OK    49    598KB The Isabelle ENIGMA
+OK    50    151KB Concrete Semantics with Coq and CoqHammer
+OK    51    403KB Tactic Learning and Proving for the Coq Proof Assistant
+OK    52    846KB Lemmas: Generation, Selection, Application
+OK    53    215KB Reconstructing veriT Proofs in Isabelle/HOL
+OK    54    661KB When Agda met Vampire
+OK    55   3072KB The Network Structure of Mathlib
+OK    56    330KB CSLib: The Lean Computer Science Library
+OK    57   1088KB LeanSearch v2: Global Premise Retrieval for Lean 4 Theorem Proving
+OK    58    204KB The Fundamental Theorem of Asset Pricing, Formalized in Lean 4
+OK    59    705KB Formalizing Automated Market Makers in the Lean 4 Theorem Prover
+OK    60    493KB A formal proof of the Ramanujan--Nagell theorem in Lean 4
+OK    61    353KB The Lean 4 Theorem Prover and Programming Language
+OK    63    821KB Deep Network Guided Proof Search
+OK    64   1290KB HyperTree Proof Search for Neural Theorem Proving
+OK    65    385KB BFS-Prover: Scalable Best-First Tree Search for LLM-based Automatic Theorem Proving
+OK    66   1310KB Automated Theorem Proving in Intuitionistic Propositional Logic by Deep Reinforcement Learning
+OK    67    189KB Reinforcement Learning of Theorem Proving
+OK    68    613KB Learning to Guide a Saturation-Based Theorem Prover
+OK    69    542KB A Deep Reinforcement Learning Approach to First-Order Logic Theorem Proving
+OK    70    236KB Prolog Technology Reinforcement Learning Prover
+OK    71    489KB Machine Learning Guidance and Proof Certification for Connection Tableaux
+OK    72   1629KB Proving Theorems Recursively
+OK    73    786KB Learning Formal Mathematics From Intrinsic Motivation
+OK    74    275KB Bourbaki: Self-Generated and Goal-Conditioned MDPs for Theorem Proving
+OK    75    261KB MiniF2F: a cross-system benchmark for formal Olympiad-level mathematics
+OK    76    195KB ProofNet: Autoformalizing and Formally Proving Undergraduate-Level Mathematics
+OK    77    293KB FIMO: A Challenge Formal Dataset for Automated Theorem Proving
+OK    78    829KB NaturalProofs: Mathematical Theorem Proving in Natural Language
+OK    79    542KB Reliable Evaluation and Benchmarks for Statement Autoformalization
+OK    80   1949KB FormalMATH: Benchmarking Formal Mathematical Reasoning of Large Language Models
+OK    81    444KB Multilingual Mathematical Autoformalization
+OK    82   1426KB Neural Theorem Proving for Verification Conditions: A Real-World Benchmark
+OK    83   4642KB TheoremBench: Evaluating LLMs on Theorem Proving in Formal Mathematics
+OK    84    796KB MathAtlas: A Benchmark for Autoformalization in the Wild
+OK    85   4417KB TaoBench: Do Automated Theorem Prover LLMs Generalize Beyond MathLib?
+OK    87    515KB Trustworthy Verification of RISC-V Binaries Using Symbolic Execution in HolBA
+OK    88    323KB Formal Verification of the Sumcheck Protocol
+OK    89   1280KB Selene: Pioneering Automated Proof in Software Verification
+OK    90   3761KB Accelerating Verified-Compiler Development with a Verified Rewriting Engine
+OK    91    292KB Improving Counterexample Quality from Failed Program Verification
+OK    92   1066KB QCP: A Practical Separation Logic-based C Program Verification Tool
+OK    93   1809KB Towards Real-World Industrial-Scale Verification: LLM-Driven Theorem Proving on seL4
+OK    94   1570KB RAG-Verus: Repository-Level Program Verification with LLMs using Retrieval Augmented Generation
+OK    95    532KB Towards an Automatic Proof of Lamport's Paxos
+OK    96    582KB Verified VCG and Verified Compiler for Dafny
+OK    97    325KB Verified Correctness and Security of mbedTLS HMAC-DRBG
+OK    98   1071KB Formal Verification of Physical Layer Security Protocols for Next-Generation Communication Networks (extended version)
+OK    99    409KB seL4: Formal Verification of an OS Kernel
+OK   100    195KB Formal Verification of a Realistic Compiler

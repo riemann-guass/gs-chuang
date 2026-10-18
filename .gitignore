@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Lean / Lake
+.lake/
+build/
+*.olean
+*.ilean
+*.trace
+*.hash
+
+# Local experiment artifacts and data
+data/raw/
+data/processed/
+outputs/
+runs/
+logs/
+*.log
+
+# Temporary literature extraction
+arxiv论文/tmp/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# IDE and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

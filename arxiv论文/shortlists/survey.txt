@@ -1,0 +1,16 @@
+===== survey (15) =====
+2505.13472v1 | 2025 | s=2 | Proof Assistants for Teaching: a Survey
+2403.04017v1 | 2024 | s=2 | Learning Guided Automated Reasoning: A Brief Survey
+2501.16274v1 | 2025 | s=1 | What is Formal Verification without Specifications? A Survey on mining LTL Specifications
+2511.08765v1 | 2025 | s=1 | Formal Verification of Diffusion Auctions
+2402.08032v1 | 2024 | s=1 | The Formal Proof of the Kepler Conjecture: a critical retrospective
+2401.11905v1 | 2024 | s=1 | Considerations on Approaches and Metrics in Automated Theorem Generation/Finding in Geometry
+2312.05515v1 | 2023 | s=1 | Exploration of Superposition Theorem in Spectrum Space for Composite Event Analysis in an ADN
+2305.00130v1 | 2023 | s=1 | Normal proofs and tableaux for the Font-Rius tetravalent modal logic
+2211.04164v1 | 2022 | s=1 | Algebra in probabilistic reasoning
+2202.06086v1 | 2022 | s=1 | From the String Landscape to the Mathematical Landscape: a Machine-Learning Outlook
+2101.07761v1 | 2021 | s=1 | The Coq Proof Script Visualiser (coq-psv)
+1708.09295v1 | 2017 | s=1 | Unveiling the curtain of superposition: Recent gedanken and laboratory experiments
+1410.7356v2 | 2014 | s=1 | Combinatorial Proofs of Identities Involving Symmetric Matrices
+0901.4478v2 | 2009 | s=1 | Local and Global Aspects of Lie's Superposition Theorem
+physics/9802041v1 | 1998 | s=1 | The nonlinear superposition principle and the Wei-Norman method
