@@ -1,0 +1,754 @@
+﻿% !TEX program = xelatex
+\documentclass[UTF8,a4paper,11pt,fontset=windows]{ctexart}
+
+\usepackage[margin=2.1cm,top=2.4cm,bottom=2.2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{colortbl}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{tcolorbox}
+\usepackage{listings}
+
+\definecolor{deepblue}{RGB}{20,60,120}
+\definecolor{lightgray}{RGB}{244,245,247}
+\definecolor{warnred}{RGB}{170,40,40}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=deepblue,
+  urlcolor=deepblue,
+  citecolor=deepblue,
+  bookmarksnumbered=true,
+  pdftitle={多 Agent 自动定理证明：已有工作、DeepSeek 模型特质与选题调研},
+  pdfauthor={大创2 项目调研},
+  pdfsubject={Automated Theorem Proving / Lean 4 / Multi-Agent}
+}
+
+\setlist[itemize]{leftmargin=1.6em,itemsep=2pt,topsep=3pt,parsep=0pt}
+\setlist[enumerate]{leftmargin=1.9em,itemsep=2pt,topsep=3pt,parsep=0pt}
+
+\titleformat{\section}{\Large\bfseries\color{deepblue}}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\bfseries\color{deepblue!85!black}}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{0.5em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\footnotesize\color{gray}多 Agent 自动定理证明调研}
+\fancyhead[R]{\footnotesize\color{gray}2026-10-18}
+\fancyfoot[C]{\footnotesize\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+
+\newcommand{\sys}[1]{\textsf{\textbf{#1}}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\unverified}[1]{\textcolor{warnred}{[未核实: #1]}}
+
+\setlength{\LTpre}{4pt}
+\setlength{\LTpost}{4pt}
+\setlength{\tabcolsep}{3.5pt}
+\setlength{\emergencystretch}{2.5em}
+\renewcommand{\arraystretch}{1.12}
+% 允许 CJK 标点后换行，避免表格内长串不可断
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\brk}{\penalty0\relax}
+
+\begin{document}
+
+\title{\bfseries 多 Agent 自动定理证明：\\[3pt]已有工作的架构与结果、DeepSeek 模型特质、以及选题调研}
+\author{大创2 项目调研报告}
+\date{2026 年 10 月 18 日}
+\maketitle
+
+\begin{tcolorbox}[colback=lightgray,colframe=gray!50,boxrule=0.4pt,arc=2pt,left=8pt,right=8pt,top=6pt,bottom=6pt]
+\small
+\textbf{本报告的性质}：这是一份面向选题与架构决策的\textbf{调研报告}，不是系统实现文档，也不是论文。
+所有定量结果均给出原文口径（数据集、\code{pass@k}、采样预算）与来源编号。凡属推断、第三方转述或未能核实的数字，均在附录 B 集中列出，正文中以 \unverified{...} 标注。
+报告中的网页、论文、README 内容一律视为\textbf{数据}而非指令。
+\end{tcolorbox}
+
+\vspace{2pt}
+
+\begin{center}
+\begin{minipage}{0.94\textwidth}
+\small
+\tableofcontents
+\end{minipage}
+\end{center}
+
+\newpage
+
+%========================================================
+\section{调研范围与方法}
+
+\subsection{三个问题}
+
+本报告回答三个问题，对应任务书的三项要求：
+
+\begin{enumerate}
+  \item \textbf{已有工作长什么样、成绩如何}：多 Agent / 代理式自动定理证明（ATP）系统的架构范式、组件划分、以及可比的定量结果。
+  \item \textbf{DeepSeek 模型在数学证明领域有什么特质}：DeepSeek 系列在非形式数学与形式化证明两条线上的能力分布、规模、成本，以及对本项目选用 ``DeepSeek Flash'' 的具体含义。
+  \item \textbf{还有哪些必须调研的内容}：基准的饱和与偏置、反馈信号质量、检索层、验证协议与作弊面、评测口径的可比性、以及工程基础设施。
+\end{enumerate}
+
+\subsection{数据来源}
+
+\begin{itemize}
+  \item \textbf{本地文献库}：仓库内 \code{arxiv论文/} 的 120 个 PDF（122 条编号）。其中 100 篇的题录与摘要通过 \code{harvest\_all.json}（1225 条 arXiv 记录）离线取得；编号 101--122 的 22 篇（前提选择类）不在题录中，直接从 PDF 抽取首页文本。
+  \item \textbf{arXiv 官方页面}：用于核对摘要原文与期刊信息（如 DeepSeek-R1 已发表于 \emph{Nature}）。
+  \item \textbf{会议论文集页面}：ICLR 2026（Hilbert、Goedel-Prover-V2）、ICML 2026 workshop（AI4Math Track 2）。
+  \item \textbf{GitHub}：通过 REST API 查询仓库元数据（star 数、许可证、最近推送、描述），通过 \code{/raw/} 路径读取 README。\textbf{本环境无法直接访问 github.com 网页与 raw.githubusercontent.com，因此 \code{web\_fetch} 对 GitHub 全部失败，改由 PowerShell 直连 API 获取}，这一点在附录 A 记录。
+  \item \textbf{厂商/第三方评测博客}：仅用于 DeepSeek-V4-Flash 这类尚无正式论文的模型的公开数据，且明确标注为第三方评测。
+\end{itemize}
+
+\subsection{与项目文档的关系}
+
+\code{AGENT.md} 第 7 节已有一轮 GitHub 工具调研。本报告\textbf{复核}了其中 11 个仓库的许可证与活跃度（结论一致，见 \S\ref{sec:github}），并补充了 2026 年新出现的代理式系统（Numina-Lean-Agent、OProver、Hilbert、AxProverBase、Seed Prover 1.5 等）。凡与 \code{AGENT.md} 冲突处，以本报告标注的来源为准，并建议同步更新 \code{AGENT.md}。
+
+%========================================================
+\section{问题设定与统一抽象}
+
+\subsection{任务定义}
+
+形式化定理证明任务可写为：给定 Lean 4 定理语句 $s$（含必要的 import 与局部上下文），输出证明项 $p$，使得在固定 toolchain 与 Mathlib 版本下，$s$ 与 $p$ 拼成的文件通过 Lean kernel 检查且不含 \code{sorry} \cite{lean4,mathlib}。与原定理语句逐字一致、以及对禁用手段的审计，是评测的前提（\S\ref{sec:verify}）。
+
+与自然语言数学相比，形式化证明的额外成本通常用 \emph{De Bruijn 因子}描述：一行数学推导常膨胀为 4--10 行 Lean 代码 \cite{seedprover}。这决定了任何形式化系统的设计都必须把 ``代码工程能力'' 与 ``数学直觉'' 当作两种不同的能力来供给。
+
+\subsection{一条统一的回路}
+
+把 2020--2026 年的代表性系统放在一起看，它们几乎都可以抽象为同一条回路：
+
+\begin{center}
+\fbox{\parbox{0.93\textwidth}{\centering\small
+候选生成 $\rightarrow$ 送 Lean 编译 $\rightarrow$ 解析诊断/目标状态 $\rightarrow$ 修复或扩展 $\rightarrow$ 提交 kernel 验证
+}}
+\end{center}
+
+差异只在于这条回路上\textbf{每一步由谁做、能看多少上下文、能试多少次}。这给我们一个有用的分析框架：所谓 ``多 Agent''，通常就是把这条回路拆成若干角色，并给每个角色\textbf{隔离的上下文}与\textbf{受限的工具集}，再用一段\textbf{确定性代码}把它们串起来。
+
+\subsection{五个可分解的维度}
+
+后文的架构分类与选型建议都按这五个维度展开：
+
+\begin{enumerate}
+  \item \textbf{模型}：专用证明模型（在 Lean 证明上做过大规模 RL/SFT）还是通用前沿模型（无形式化训练，靠上下文与工具）。
+  \item \textbf{搜索}：单发、best-of-$N$、best-first 树搜索、MCTS、递归分解。
+  \item \textbf{检索}：是否访问 Mathlib / 外部搜索，检索发生在 tactic 级还是定理级（全局前提检索）。
+  \item \textbf{反馈}：只用编译器错误，还是额外用 goal state、评审模型、反例探测。
+  \item \textbf{库与记忆}：是否在证明过程中沉淀可复用引理、跨题记忆、跨项目库。
+\end{enumerate}
+
+%========================================================
+\section{已有工作的架构与结果}
+
+\subsection{演进脉络}
+
+\begin{itemize}
+  \item \textbf{2020--2022：从搜索到学习引导搜索}。GPT-f 首次让深度学习系统产出的证明被 Metamath 社区采纳 \cite{gptf}；PACT 用 kernel 级证明项做协同训练 \cite{pact}；HyperTree 把 AlphaZero 式的在线训练引入证明搜索 \cite{hypertree}。
+  \item \textbf{2022--2023：hammer 与前提选择成为瓶颈焦点}。Thor 用 Sledgehammer 选前提 \cite{thor}；Magnushammer 用对比学习做前提选择并超过 Sledgehammer \cite{magnushammer}；Baldur 提出整段证明生成 + 修复 \cite{baldur}；Draft-Sketch-Prove 用非形式证明草稿引导 \cite{dsp}。
+  \item \textbf{2023--2024：可复现基础设施与专用模型}。LeanDojo 提供数据抽取、交互与检索增强基线 \cite{leandojo}；COPRA 证明通用模型 + 状态化搜索也能打 \cite{copra}；DeepSeek-Prover 用 800 万条合成语句把 7B 模型推到 miniF2F 46.3\%@64 \cite{dsprover}。
+  \item \textbf{2025：规模与搜索的双重推进}。BFS-Prover 72.95\% \cite{bfsprover}；InternLM2.5-StepProver 引入 critic 引导 \cite{internlm}；Kimina-Prover 用 RL 学到 ``形式化推理模式'' \cite{kimina}；DeepSeek-Prover-V2 用子目标分解 + RL 达 88.9\% \cite{dsprov2}。
+  \item \textbf{2026：代理化（agentic）成为主流，基准开始饱和}。Hilbert 在 miniF2F 上达 99.2\%、PutnamBench 70.0\% \cite{hilbert}；Goedel-Prover-V2 以 32B 达 90.4\% \cite{goedelv2}；OProver 把代理式证明轨迹纳入训练数据 \cite{oprover}；Numina-Lean-Agent 用 Claude Code + MCP 解出 Putnam 2025 全部 12 题 \cite{numina}；Seed Prover 1.5 用分层多 Agent 在 IMO 2025 拿到 35/42 \cite{seedprover}。
+\end{itemize}
+
+\subsection{六种架构范式}
+
+\subsubsection{范式 A：专用证明模型 + 树搜索}
+
+代表：BFS-Prover \cite{bfsprover}、InternLM2.5-StepProver \cite{internlm}、Kimina-Prover \cite{kimina}、Goedel-Prover-V2 \cite{goedelv2}、DeepSeek-Prover-V2 \cite{dsprov2}。
+
+结构是 ``tactic 级生成器 + 搜索器 + Lean 判定器''。搜索器维护前沿，生成器给候选 tactic（或整段证明），Lean 负责真假。关键工程在\textbf{数据与偏好}：BFS-Prover 用编译器错误自动标注 state--tactic 对做 DPO，并对 BFS 做长度归一化 \cite{bfsprover}；InternLM2.5-StepProver 训一个 critic 模型给出运行时偏好，把 prover 从 59.4\% 提到 65.9\% \cite{internlm}；Goedel-Prover-V2 在人类题目上收益饱和后\textbf{自造更难的合成题}继续训练，并训练模型读编译器反馈自我纠错 \cite{goedelv2}。
+
+这类范式的\textbf{上限最高}（miniF2F 90\% 以上），但需要大规模训练算力，且模型与 Lean 版本强耦合。
+
+\subsubsection{范式 B：通用模型的上下文内代理（in-context agent）}
+
+代表：COPRA \cite{copra}、AxProverBase \cite{axprover}、Numina-Lean-Agent \cite{numina}、ReCent-Prover \cite{recent}、AI4Math-2026 Track 2 \cite{ai4math}。
+
+结构是 ``前沿模型 + 工具 + 状态化循环''，不训练。COPRA 反复让 GPT-4 在带回溯的搜索里提 tactic，把执行反馈、搜索历史与检索到的引理拼进下一次 prompt \cite{copra}。
+
+AxProverBase 是本范式最干净的形态，也是本报告认为\textbf{对本项目最有参考价值}的系统 \cite{axprover}：四个组件构成闭环——\textbf{Proposer}（写 Lean 代码，可调用 LeanSearch 与网页搜索）、\textbf{Compiler}（\code{lake} 构建，并在 \code{sorry} 处抽取 goal state 作为结构化反馈）、\textbf{Reviewer}（检查定理语句未被篡改、无 \code{sorry}、无作弊 tactic）、\textbf{Memory}（把失败教训总结成 ``实验记录本''，避免重复犯错）。用 Claude Opus 4.5、50 轮迭代、\code{pass@1}，报告 PutnamBench 54.7\%、FATE-M 98.0\%、FATE-H 66.0\%、FATE-X 24.0\%、LeanCat 59.0\% \cite{axprover}。
+
+ReCent-Prover 在 Rocq 上补了两个 ``推理优先'' 的改动：验证时带反思（先审视自己生成的 tactic，识别潜在误用并写失败摘要）、检索时带规划（用 LLM 生成的证明计划而不是子目标相似度来条件化检索），在同等 LLM 调用预算下把已证定理数相对提升 22.58\% \cite{recent}。
+
+AI4Math-2026 Track 2 是\textbf{最贴近 ``多 Agent'' 字面意义}的公开系统 \cite{ai4math}：六个子代理分别承担把定理拆成子引理、探测反例、孤立证明每个子引理、从零构造库中缺失的部分、装配已证部分等认知工作；\textbf{协调完全由确定性 shell 状态机负责}，子代理之间的诊断输出\textbf{逐字节传递、不经过解释层}。在 ICML 2026 AI4Math Challenge 2 上解出 34 题中的 30 题（600/1000 分），全程无人工介入。
+
+\subsubsection{范式 C：分层 ``草图 → 子目标 → 递归''}
+
+代表：Draft-Sketch-Prove \cite{dsp}、POETRY \cite{poetry}、Bourbaki \cite{bourbaki}、Hilbert \cite{hilbert}、Seed Prover 1.5 \cite{seedprover}。
+
+核心思想是把 ``一次证完'' 换成 ``先证结构、再证细节''。POETRY 在 Isabelle 里逐层搜索可验证的 sketch，把当前层中间猜想暂时替换为 \code{sorry}，留到下一层 \cite{poetry}；Bourbaki 用自生成的目标条件 MDP 配 MCTS，并用多个 7B 模型分别做子目标生成与 tactic 合成 \cite{bourbaki}。
+
+Hilbert 把这条路线做到当前公开最强 \cite{hilbert}：四个组件——擅长数学推理的\textbf{非形式 LLM}、擅长 Lean tactic 的\textbf{专用证明 LLM}、\textbf{形式验证器}、\textbf{语义定理检索器}；专用证明器解不动时递归分解成子目标，分别交给证明器或推理器，并用验证器反馈修正错误证明。报告 miniF2F 99.2\%、PutnamBench 462/660（70.0\%）。
+
+Seed Prover 1.5 的分层更明确 \cite{seedprover}：\textbf{自然语言证明器}（数学直觉与自然语言证明）$\rightarrow$ \textbf{Sketch 模型}（把自然语言证明转成引理式 Lean 骨架，支持 \code{sorry}）$\rightarrow$ \textbf{Agentic Prover}（并行证每个分解出的引理）；若某引理仍过难，\textbf{递归}再调 Sketch 模型分解。Agentic Prover 可主动调用 Mathlib 搜索、执行 Python、做增量引理验证。IMO 2025 前五题在 16.5 小时内产出可编译可验证的 Lean 证明（35/42），Putnam 2025 九小时内 11/12 \cite{seedprover}。
+
+\subsubsection{范式 D：检索增强}
+
+代表：LeanDojo/ReProver \cite{leandojo}、REAL-Prover \cite{realprover}、LeanSearch v2 \cite{leansearchv2}、Lean Finder \cite{leanfinder}、LeanExplore \cite{leanexplore}、LeanPremise/LeanHammer \cite{leanhammer}。
+
+LeanDojo 的贡献是\textbf{可复现性}：开源工具包 + 含前提标注的数据 + 98{,}734 条定理的基准 + 单 GPU 周可训的 ReProver \cite{leandojo}。REAL-Prover 面向本科以上数学，用 HERALD-AF 数据管线与 Jixia-interactive 环境，\code{pass@64} 下 ProofNet 23.7\%、FATE-M 56.7\% \cite{realprover}。
+
+2025--2026 检索侧的关键变化是\textbf{从 ``找一个声明'' 转向 ``找一整套前提''}。LeanSearch v2 把这件事命名为 \emph{global premise retrieval}：标准模式用层级化非形式化语料 + embedding--reranker，单查询检索 nDCG@10 0.62（次优 0.53）；推理模式用迭代的 sketch--retrieve--reflect，在 69 条研究级 Mathlib 定理上 10 个候选内回收 46.1\% 的基准前提组（强推理检索 38.0\%，前提选择基线 9.3\%）；在固定 prover 回路的对照中，换成 LeanSearch v2 把证明成功率从 16\% 提到 20\%（无检索 4\%）\cite{leansearchv2}。
+
+\subsubsection{范式 E：工具与 hammer 增强}
+
+代表：Lean-auto \cite{leanauto}、Lean-SMT \cite{leansmt}、LeanHammer/LeanPremise \cite{leanhammer}、ProofAug \cite{proofaug}。
+
+思路是把 Lean 的目标翻译给外部 ATP/SMT，再把证明重建回 Lean。Lean-auto 首次在 Lean 4 上给出基于依赖类型论的通用翻译并保证可靠，在 Mathlib4 上比已有工具解更多题 \cite{leanauto}；Lean-SMT 给出 SMT 证明到 Lean 证明的重建 \cite{leansmt}；LeanHammer 与 LeanPremise 组合成 Lean 上第一个端到端、领域通用的 hammer，比已有前提选择器多解 21\% 的目标 \cite{leanhammer}。
+
+ProofAug 提供了 \textbf{``LLM + 自动化工具'' 应当如何耦合}的实证：对模型生成的证明做\textbf{细粒度结构分析}，在不同粒度上插入内置 tactic 与外部 ATP；作为可插拔模块接入任意树搜索。在 Isabelle 上用 \code{deepseek-math-7b-base}，每题 2100 次查询达 66.0\% 累计通过率（此前 SOTA Subgoal-XL 用每题 16384 次查询才 56.1\%）；Lean 4 版本把 Kimina-Prover-Preview-Distill-1.5B 的 \code{pass@1} 从 44.3\% 提升到 50.4\% \cite{proofaug}。
+
+\subsubsection{范式 F：库与记忆的演化}
+
+代表：LEGO-Prover \cite{lego}、DreamProver \cite{dreamprover}、CircuitProver \cite{circuitprover}、Lean-STaR \cite{leanstar}。
+
+LEGO-Prover 让模型在证明中\textbf{新建}技能并入库，miniF2F-valid 48.0\%$\rightarrow$57.0\%、test 45.5\%$\rightarrow$47.1\%，过程中生成两万余条技能；消融显示新技能把成功率从 47.1\% 提到 50.4\% \cite{lego}。DreamProver 用 ``wake--sleep'' 程序归纳：wake 阶段用当前库证题并提议候选引理，sleep 阶段抽象、精炼、合并，使库变得\textbf{紧凑且可迁移} \cite{dreamprover}。CircuitProver 把硬件验证的证明轨迹蒸馏成可复用电路证明库，63 个任务全部证出（朴素 agent 92.1\%，且平均需要两倍轮次），库的积累使证明长度减少 16.3\%、验证时间减少 23.2\% \cite{circuitprover}。
+
+Lean-STaR 则给出 ``思考--证明交替'' 的证据：让模型在每一步 tactic 前生成非形式思考，并用专家迭代自举，miniF2F-test \code{pass@64} 从 43.4\% 到 46.3\% \cite{leanstar}。
+
+\subsection{主结果汇总}
+
+\noindent\textbf{说明}：下表严格按\textbf{原文口径}填写。不同行的列不可直接比较，原因见 \S\ref{sec:incomparable}。
+
+{\small
+\begin{longtable}{@{}L{2.6cm}L{0.8cm}L{2.4cm}L{4.1cm}L{5.3cm}@{}}
+\caption{专用证明模型与搜索类系统的代表结果}\label{tab:specialized}\\
+\toprule
+\textbf{系统} & \textbf{年} & \textbf{基座/规模} & \textbf{架构要点} & \textbf{原文结果口径} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{系统} & \textbf{年} & \textbf{基座/规模} & \textbf{架构要点} & \textbf{原文结果口径} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+GPT-f & 2020 & GPT 系 & Metamath 生成式证明搜索 & 产出被 Metamath 主库采纳的新短证明 \cite{gptf} \\
+PACT & 2021 & Transformer & kernel 级证明项协同训练 & Lean held-out 32\%$\rightarrow$48\% \cite{pact} \\
+HyperTree & 2022 & Transformer & HTPS 在线训练 & Metamath 65.4\%（仅 HTPS）/82.6\%（在线）\cite{hypertree} \\
+LeanDojo/\allowbreak ReProver & 2023 & 开源 & 检索增强 + 前提标注 & 98{,}734 条定理基准；\newline 单 GPU 周训练 \cite{leandojo} \\
+Lean-STaR & 2024 & 开源 & 形式化思考 + 专家迭代 & miniF2F-test 43.4\%$\rightarrow$46.3\% (\code{pass@64}) \cite{leanstar} \\
+LEGO-Prover & 2023 & 开源 & 增长式技能库 & valid 48.0\%$\rightarrow$57.0\%；\brk{}test 45.5\%$\rightarrow$47.1\% \cite{lego} \\
+InternLM2.5-StepProver & 2024 & InternLM2.5 & prover--critic + 专家迭代 & critic 把 prover 59.4\%$\rightarrow$65.9\% \cite{internlm} \\
+BFS-Prover & 2025 & 7B & BFS + DPO + 长度归一化 & miniF2F-test 72.95\% \cite{bfsprover} \\
+DeepSeek-Prover & 2024 & DeepSeekMath 7B & 800 万合成语句 SFT & miniF2F-test 46.3\%@64 / 52\% 累计 \cite{dsprover} \\
+Kimina-Prover Preview & 2025 & Qwen2.5-72B & RL 学 ``formal reasoning pattern'' & miniF2F 80.7\% (\code{pass@8192}) \cite{kimina} \\
+DeepSeek-Prover-V2 & 2025 & 671B & 子目标分解 + RL & miniF2F-test 88.9\%；\brk{}PutnamBench 49/658 \cite{dsprov2} \\
+Goedel-Prover-V2 & 2026 & 8B / 32B & 合成加难 + 自我纠错 + 检查点平均 & 8B 84.6\%@32；\brk{}32B 88.1\%@32 / 90.4\% 自纠错\brk{}；\brk{}PutnamBench 86@184 \cite{goedelv2} \\
+POETRY & 2024 & Isabelle & 逐层 sketch + \code{sorry} 延后 & miniF2F 平均 +5.1\%；\brk{}最长证明 10$\rightarrow$26 步 \cite{poetry} \\
+Bourbaki & 2025 & 7B 集成 & 自生成目标条件 MDP + MCTS & PutnamBench 26 题（同规模 SOTA）\cite{bourbaki} \\
+ProofAug & 2025 & \code{deepseek-\allowbreak math-\allowbreak 7b} & 细粒度自动化插入 & Isabelle 66.0\%@2100 查询；\newline Lean \code{pass@1} 44.3\%$\rightarrow$50.4\% \cite{proofaug} \\
+\end{longtable}
+}
+
+\vspace{6pt}
+
+{\small
+\begin{longtable}{@{}L{2.6cm}L{0.9cm}L{2.4cm}L{4.0cm}L{5.3cm}@{}}
+\caption{代理式（agentic）系统的代表结果}\label{tab:agentic}\\
+\toprule
+\textbf{系统} & \textbf{年} & \textbf{基座/规模} & \textbf{架构要点} & \textbf{原文结果口径} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{系统} & \textbf{年} & \textbf{基座/规模} & \textbf{架构要点} & \textbf{原文结果口径} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+COPRA & 2023 & GPT-4 & 状态化回溯搜索 + 引理检索 & \code{pass@1} 超过微调式 ReProver \cite{copra} \\
+AxProverBase & 2026 & Opus 4.5 & Proposer/\allowbreak Compiler/\allowbreak Reviewer/\allowbreak Memory & PutnamBench 54.7\%@1；\newline FATE-M 98.0\%；\newline FATE-H 66.0\%；\newline FATE-X 24.0\%；\newline LeanCat 59.0\% \cite{axprover} \\
+Numina-Lean-Agent & 2026 & Claude Code + MCP & 单一通用编码 agent + 技能工具 & Putnam 2025 12/12；形式化 Brascamp--Lieb \cite{numina} \\
+ReCent-Prover & 2026 & Rocq & 反思式验证 + 规划式检索 & CoqStoq 相对 +22.58\%（同调用预算）\cite{recent} \\
+AI4Math-2026 T2 & 2026 & 商用模型 & 6 子代理 + 确定性状态机 & 34 题解 30（600/1000 分）\cite{ai4math} \\
+Hilbert & 2026 & 商用模型 & 非形式 LLM + 证明 LLM + 验证器 + 检索 & miniF2F 99.2\%；\brk{}PutnamBench 462/660 (70.0\%) \cite{hilbert} \\
+Seed Prover 1.5 & 2026 & 闭源 & NL 证明器 + Sketch + Agentic Prover 递归 & IMO 2025 35/42；\brk{}Putnam 2025 11/12；\brk{}PutnamBench 88\%；\brk{}FATE-H 80\%；\brk{}FATE-X 33\% \cite{seedprover} \\
+OProver & 2026 & 32B & 代理式证明轨迹回流训练 + 检索记忆 & MiniF2F 93.3\%@32；\brk{}ProverBench 58.2\%；\brk{}PutnamBench 11.3\% \cite{oprover} \\
+DreamProver & 2026 & -- & wake--sleep 引理库演化 & 成功率提升、证明更短、成本更低 \cite{dreamprover} \\
+CircuitProver & 2026 & -- & 硬件 Lean 证明 + 可复用库 & 63/63；朴素 agent 92.1\%；证明长度 $-$16.3\%、时间 $-$23.2\% \cite{circuitprover} \\
+\end{longtable}
+}
+
+\subsection{为什么这些数字不能直接排队}\label{sec:incomparable}
+
+这是本报告\textbf{最重要的方法论结论之一}，直接影响项目自己怎么报指标。
+
+\begin{enumerate}
+  \item \textbf{\code{pass@k} 不同，差几个数量级}。Kimina 的 80.7\% 是 \code{pass@8192} \cite{kimina}；AxProverBase 的 54.7\% 是 \code{pass@1} 且最多 50 轮迭代 \cite{axprover}；Goedel-V2 报 \code{pass@32} 与 \code{pass@184} \cite{goedelv2}。把 \code{pass@1} 与 \code{pass@8192} 并列会得出完全错误的强弱判断。
+  \item \textbf{同一基准的不同版本/子集。} PutnamBench 在文献中出现 $658$ 与 $660$ 两种总数（本报告两处原文分别如此），且 ``PutnamBench 88\%''（Seed \cite{seedprover}）与 ``SeedProver 50.4\%''（Hilbert \cite{hilbert}）并存——后者很可能评估的是更早版本或更严格设置。\unverified{Seed 的 88\% 与 Hilbert 转述的 50.4\% 之间的差异原因，需读两份原文的评测章节才能定论}
+  \item \textbf{时间/成本预算不同。} Seed Prover 1.5 的 IMO 结果是 16.5 小时内产出前五题；AxProverBase 是 50 轮迭代。同样的通过率，成本可能差两个数量级。
+  \item \textbf{基座模型不同且快速迭代。} 2026 年的代理式结果多用闭源前沿模型（Opus 4.5 等），这类结果\textbf{不能迁移}到弱模型上；而专用模型结果绑定特定 Lean/Mathlib 版本。
+\end{enumerate}
+
+\textbf{对本项目的直接含义}：自建评测必须同时报告 \code{pass@k}、迭代/采样预算、wall-clock、token 与 Lean/Mathlib 版本哈希，否则既不能与文献比较，也不能与自己的历史版本比较。这与 \code{AGENT.md} 第 9 节的口径一致，但本报告建议\textbf{额外强调 pass@k 的显式声明}。
+
+\subsection{开源工程与工具层}\label{sec:github}
+
+下表复核了 \code{AGENT.md} 第 7 节的仓库，并补充 2026 年新出现的工程。许可证与活跃度为 2026-10-18 通过 GitHub API 实测。
+
+{\footnotesize
+\begin{longtable}{@{}L{4.9cm}L{0.9cm}L{1.9cm}L{1.9cm}L{5.4cm}@{}}
+\caption{GitHub 工程现状（2026-10-18 实测）}\label{tab:repos}\\
+\toprule
+\textbf{仓库} & \textbf{Stars} & \textbf{许可证} & \textbf{最近推送} & \textbf{定位} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{仓库} & \textbf{Stars} & \textbf{许可证} & \textbf{最近推送} & \textbf{定位} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\code{lean-dojo/LeanCopilot} & 1332 & MIT & 2026-10-13 & Lean 内 LLM 副驾驶 \cite{leancopilot} \\
+\code{lean-dojo/LeanDojo} & 846 & MIT & 2026-01-18 & 数据抽取 + 程序化交互 \cite{leandojo} \\
+\code{oOo0oOo/lean-lsp-mcp} & 530 & MIT & 2026-09-30 & Lean MCP 工具层（goals/diagnostics/检索） \\
+\code{cameronfreer/lean4-skills} & 464 & MIT & 2026-09-29 & Agent 技能包：prove/autoprove/cascade \\
+\code{ByteDance-Seed/Seed-Prover} & 441 & Apache-2.0 & 2026-02-13 & Seed Prover 代码与 Putnam 2025 解答 \cite{seedprover} \\
+\code{project-numina/\allowbreak numina-lean-agent} & 280 & \textbf{无} & 2026-07-08 & Claude Code + MCP 的通用形式化代理 \cite{numina} \\
+\code{frenzymath/Archon} & 225 & Apache-2.0 & 2026-08-17 & plan agent + prover agents，DAG 编排 \cite{archon} \\
+\code{Goedel-LM/Goedel-Prover-V2} & 194 & \textbf{无} & 2025-08-27 & Goedel-Prover-V2 模型与数据 \cite{goedelv2} \\
+\code{stanford-centaur/PyPantograph} & 150 & Apache-2.0 & 2026-08-30 & Lean 4 程序化交互（proof state 控制） \\
+\code{lean-dojo/LeanDojo-v2} & 147 & Apache-2.0 & 2026-08-10 & 端到端训练/评测框架（依赖 PyTorch） \\
+\code{lean-dojo/LeanAgent} & 87 & \textbf{无} & 2025-06-13 & 终身学习式证明框架 \\
+\code{trishullab/copra} & 81 & \textbf{无} & 2026-08-15 & COPRA 官方实现 \cite{copra} \\
+\code{Axiomatic-AI/ax-prover-base} & 52 & \textbf{AGPL-3.0} & 2026-09-03 & 最小代理基线（4 组件）\cite{axprover} \\
+\code{agenticsnz/unsorry} & 42 & Apache-2.0 & 2026-10-07 & 分布式 swarm：Git 队列 + kernel 闸门 \cite{unsorry} \\
+\code{frenzymath/LeanSearch-v2} & 24 & Apache-2.0 & 2026-05-18 & 全局前提检索 \cite{leansearchv2} \\
+\code{haoxiongliu/ProofAug} & 16 & \textbf{无} & 2025-06-08 & ProofAug 官方实现 \cite{proofaug} \\
+\code{r-irbe/proof-skills} & 2 & Apache-2.0 & 2026-10-16 & 63 个 skill，含多 Agent 角色契约 \\
+\code{Lean-Prover/lean-prover} & 1 & \textbf{无} & 2026-09-10 & 自主 Lean 4 证明 agent（\S\ref{sec:leanprover}）\cite{leanproverrepo} \\
+\code{twoto1lab/Ax-prover-repro} & 1 & \textbf{无} & 2026-03-11 & 3-Agent 复现（Orchestrator/Prover/Verifier） \\
+\end{longtable}
+}
+
+\paragraph{许可证要点。}可直接复用代码的是 MIT / Apache-2.0；\textbf{AGPL-3.0} 的 \code{ax-prover-base} 若被集成进联网 App 可能触发源码开放义务，需先确认；\textbf{无许可证}的仓库（Numina-Lean-Agent、Goedel-Prover-V2、COPRA、ProofAug、Lean-Agent、lean-prover、Ax-prover-repro）默认保留所有权利，只能\textbf{只读参考}，不能复制代码。注意 \code{project-numina/\allowbreak numina-lean-agent} 有 280 star 但\textbf{无许可证}，这是一个容易被忽略的合规陷阱。
+
+\paragraph{一个值得注意的小工程。}\label{sec:leanprover}\code{Lean-Prover/lean-prover} 只有 1 个 star，但它的形态和本项目的目标（弱模型 + 有限预算 + 端到端）高度相似：任何 OpenAI 兼容端点、逐难度分层的步数/温度配置、MCP server、会话恢复与分支、best-of-$N$ 与 beam search、本地 Mathlib 检索、自动形式化。其自报成绩是在自带 100 题分级基准上用\textbf{免费 27B 端点}得 68/100（trivial 20/20、easy 23/30、medium 21/30、hard 4/20），成本 \$0 \cite{leanproverrepo}。这个例子说明：\textbf{用免费/廉价端点做一条可用的证明回路是现实的}，难点集中在 hard 档。
+
+%========================================================
+\section{DeepSeek 模型在数学证明领域的特质}
+
+\subsection{模型谱系：两条线}
+
+调研中最重要的一个结构性发现是：\textbf{DeepSeek 在数学上有两条几乎不相交的产品线}，二者能力来源完全不同。
+
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{线} & \textbf{代表} & \textbf{能力来源} \\
+\midrule
+非形式数学线 & DeepSeekMath $\rightarrow$ V3 $\rightarrow$ R1 $\rightarrow$ V4-Pro / V4-Flash & 网页数学语料 + GRPO/RL 推理 \\
+形式证明线 & DeepSeek-Prover $\rightarrow$ V1.5 $\rightarrow$ V2 & 大规模合成 Lean 数据 + 专门训练 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{非形式数学线。}DeepSeekMath 7B 从 DeepSeek-Coder-Base-v1.5 继续预训练 120B 数学相关 token，在 MATH 上无工具无投票达 51.7\%，自洽性 64 样本达 60.9\%；其提出 \textbf{GRPO}（Group Relative Policy Optimization），在降低 PPO 显存开销的同时提升数学推理 \cite{deepseekmath}。DeepSeek-V3 是 671B 总参数 / 每 token 激活 37B 的 MoE，14.8T 预训练 token，训练仅 2.788M H800 GPU 小时 \cite{deepseekv3}。DeepSeek-R1 证明\textbf{纯 RL} 就能激励出自我反思、验证、动态策略调整等推理模式，无需人工标注推理轨迹，成果发表于 \emph{Nature} 645:633--638 \cite{deepseekr1}。
+
+\paragraph{形式证明线。}DeepSeek-Prover 用 ``自然语言题 $\rightarrow$ 形式语句 $\rightarrow$ 过滤低质 $\rightarrow$ 生成证明'' 的管线造出 800 万条带证明的 Lean 4 语句，微调 DeepSeekMath 7B，miniF2F-test 达 46.3\%@64 / 52\% 累计，超过当时 GPT-4 的 23.0\%@64，并在 FIMO 上解出 5/148（GPT-4 为 0）\cite{dsprover}。
+
+DeepSeek-Prover-V2 \cite{dsprov2} 是这条线的当前顶点，也是\textbf{与 ``多 Agent'' 关系最直接}的一篇：用 DeepSeek-V3 做\textbf{递归定理证明管线}来采数据——V3 先把难题拆成子目标序列，已解子目标的证明合成思维链，再与 V3 的逐步推理结合，构成 RL 的冷启动数据。结果是\textbf{把非形式推理与形式证明压进同一个模型}：671B 模型在 miniF2F-test 达 88.9\%，PutnamBench 49/658，并提出 ProverBench（325 题，含 2024--2025 AIME 15 题，模型解出 6 题，而 DeepSeek-V3 用多数投票解出 8 题）\cite{dsprov2}。
+
+\paragraph{该结果的两个含义。}
+\begin{itemize}
+  \item \textbf{形式与非形式数学的差距在缩小}：V3（非形式）解 8/15，Prover-V2（形式）解 6/15，差距已很小 \cite{dsprov2}。
+  \item \textbf{``分解器用通用模型、证明器用专用模型'' 是被验证过的分工}。这正是 \S\ref{sec:cascade} 建议的级联原型，而且 DeepSeek 自己的数据管线就是按这个分工造的。
+\end{itemize}
+
+\subsection{形式化赛道上 DeepSeek 已不是第一}
+
+必须清楚记录：DeepSeek-Prover-V2 的 671B 规模正在被\textbf{小一到两个数量级}的模型超越。
+
+\begin{itemize}
+  \item Goedel-Prover-V2-8B 在 \code{pass@32} 下达 84.6\%，\textbf{以约 1/80 的规模超过 DeepSeek-Prover-V2-671B}；32B 版达 88.1\%@32、自纠错模式 90.4\%；PutnamBench 上 86 题@184，对照 DeepSeek-Prover-V2 的 47 题@1024，模型小约 20 倍、算力显著更低 \cite{goedelv2}。
+  \item 这意味着形式化能力的主要驱动力是\textbf{训练数据的构造方式}（合成加难、自我纠错、偏好优化、代理轨迹回流）而不是参数规模。OProver 的报告给出同样信号：32B 在 MiniF2F 达 93.3\%@32 \cite{oprover}。
+\end{itemize}
+
+\subsection{``DeepSeek Flash'' 到底是什么}
+
+项目文档写的是 ``DeepSeek Flash API''。调研确认，在当前时点这最可能指 \textbf{DeepSeek-V4-Flash}。
+
+\begin{itemize}
+  \item DeepSeek-V4 系列预览版含两个 MoE 模型：\textbf{V4-Pro 1.6T（激活 49B）}与 \textbf{V4-Flash 284B（激活 13B）}，上下文\textbf{均达一百万 token}。架构上有 CSA（压缩稀疏注意力）+ HCA（重压缩注意力）的混合注意力、Manifold-Constrained Hyper-Connections、以及 Muon 优化器；预训练逾 32T token。在百万 token 设置下，V4-Pro 单 token 推理 FLOPs 仅为 V3.2 的 27\%、KV cache 为 10\% \cite{deepseekv4}。
+  \item 第三方评测：DeepSeek V4 Flash 在 AIME 2026 上得 \textbf{96.7\%}（14 个模型中第 2），上下文 1{,}048{,}576 token，MIT 许可、权重开放；报告指出的失败模式是复杂组合计数与中间步骤的小数值误差 \cite{layerlens}。
+  \item \code{Lean-Prover/lean-prover} 的 README 中，免费模型列表明确包含 \texttt{deepseek-v4-flash-free} \cite{leanproverrepo}，说明该模型已在第三方聚合平台上以免费额度提供。
+\end{itemize}
+
+\subsection{对本项目的四条判断}
+
+\begin{enumerate}
+  \item \textbf{Flash 的强项是 ``非形式数学 + 长上下文 + 便宜''，不是 ``写长 Lean 证明''。}96.7\% 的 AIME 是单发自然语言题；而形式化需要的是 tactic 级精确语法与库内声明名。目前\textbf{不存在} Flash 规模的形式化专用模型；DeepSeek 的形式化能力集中在 671B 的 Prover-V2 上 \cite{dsprov2}。
+  \item \textbf{因此应当把 Flash 定位为 ``高频短程决策器''}：分解子目标、读诊断写修复建议、判断该不该换策略、以及在长上下文中做跨文件上下文管理。这正是 \code{AGENT.md} 第 6 节的判断，本报告对该判断给出\textbf{支持性证据}：V4 系列的百万上下文使 ``把整个 Lean 文件 + 历史错误 + 检索结果一次性放进 prompt'' 在工程上可行 \cite{deepseekv4}。
+  \item \textbf{不要让 Flash 一次生成整段证明。}AxProverBase 的实证是 ``迭代优于多次单发''，尤其在样本效率与成本上 \cite{axprover}；把预算花在\textbf{更多轮修复}而非更大采样上，对弱模型更划算。
+  \item \textbf{成本结构上，Flash 反而是优势。}在同样 \code{pass@1} 目标下，弱模型 + 更多轮次往往比强模型 + 少量轮次便宜；而无训练、纯 API 的方案（\S\ref{sec:github} 的 ax-prover / lean-prover 形态）不需要 GPU \cite{axprover,leanproverrepo}。
+\end{enumerate}
+
+\paragraph{需要实测的三件事。}以下三项本报告\textbf{无法}在没有 API key 的情况下确认，应列为 P0 前置验证：
+\begin{itemize}
+  \item V4-Flash 的 \textbf{工具调用 / JSON 结构化输出}在长上下文下是否稳定；
+  \item 单轮可稳定产出的 Lean 代码长度与 \textbf{``一次改对一处'' 的修复成功率}；
+  \item 每百万 token 的\textbf{实际计费与延迟}，以及是否有缓存折扣。
+\end{itemize}
+
+%========================================================
+\section{其他关键调研}
+
+\subsection{基准：饱和、偏置与不可比}\label{sec:bench}
+
+{\small
+\begin{longtable}{@{}L{2.7cm}L{1.2cm}L{2.9cm}L{8.5cm}@{}}
+\caption{主要基准及其已知偏置}\label{tab:bench}\\
+\toprule
+\textbf{基准} & \textbf{规模} & \textbf{层次} & \textbf{关键事实 / 偏置} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{基准} & \textbf{规模} & \textbf{层次} & \textbf{关键事实 / 偏置} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+miniF2F & 488 & 奥赛 & 244 valid / 244 test；跨 Metamath/Lean/Isabelle/HOL Light \cite{minif2f}。\textbf{已饱和}：99.2\% \cite{hilbert}，区分度接近耗尽 \\
+PutnamBench & 658/660 & 本科 & 大学数学；文献总数口径不一致，见 \S\ref{sec:incomparable} \\
+ProofNet & 371 & 本科 & Lean 3 语句 + 自然语言语句 + 自然语言证明 \cite{proofnet}；现为自动形式化主基准 \\
+FIMO & 149 & IMO & IMO 短名单题；早期 GPT-4 解 0 题 \cite{fimo} \\
+FormalMATH & 5560 & 高中--本科 & 最强调 ``实际采样预算''：最强模型仅 \textbf{16.46\%}；存在明显领域偏置（代数强、微积分弱）\cite{formalmmath}。并发现\textbf{自然语言解题提示反而降低}形式化证明成功率 \\
+TaoBench & -- & 本科 & 用 Tao《Analysis I》的自建定义体系，与 Mathlib 等价版本配对；SOTA \textbf{平均下降约 26\%}，说明瓶颈是\textbf{跨定义框架泛化}而非题目难度 \cite{taobench} \\
+MathAtlas & $\sim$52k & 研究生 & 103 本研究生教材；语句正确率最高 9.8\%、定义 16.7\%；最深依赖子集 MA-Hard 上仅 \textbf{2.6\%} \cite{mathatlas} \\
+TheoremBench & $\sim$100 & 经典定理 & 区分 ``主定理'' 与 ``自动抽取的支撑子定理''；发现现有证明器\textbf{偏好简单子定理}，且靠长而低效的 tactic 轨迹而非紧凑证明计划解题 \cite{theorembench} \\
+NTP4VC & -- & 真实代码 & 首个面向验证条件（VC）的多语言真实基准（Linux/Contiki 等），VC 证明仍是瓶颈 \cite{ntp4vc} \\
+ProverBench & 325 & 混合 & DeepSeek 提出，含 AIME 24--25 的 15 题 \cite{dsprov2} \\
+LeanCat & -- & -- & AxProverBase 使用，59.0\% 对 Gemini 3 Pro 14.0\% \cite{axprover} \\
+FATE-M/H/X & -- & 代数/本科/博士 & 分层难度；M 与 H/X 差距极大（98.0\% vs 66.0\% vs 24.0\%）\cite{axprover} \\
+\end{longtable}
+}
+
+\paragraph{结论。}项目选 miniF2F 作为首个评测集是\textbf{合理的起步选择}（社区标准、跨系统、工具链成熟），但必须清楚两点：(a) 它在 2026 年已接近饱和，\textbf{不能用来区分强系统}；(b) 应当从第一天起就预留 \textbf{PutnamBench 子集 + FATE-H/X 风格分层} 作为升级基准，否则会出现 ``miniF2F 涨点但真实能力没变'' 的假进展。
+
+\subsection{反馈信号：什么在真正起作用}
+
+跨系统的证据指向同一个结论：\textbf{反馈的粒度比模型规模更重要}。
+
+\begin{itemize}
+  \item \textbf{结构化 goal state 是关键增量。}AxProverBase 明确把 ``在 \code{sorry} 处抽取 goal state'' 作为 Compiler 组件的核心设计 \cite{axprover}；Lean 生态的 \code{lean-lsp-mcp} 与 PyPantograph 提供了 goals/diagnostics 的机器可读接口 \cite{pantograph}。
+  \item \textbf{评审角色能挡掉作弊但不提升搜索。}AxProverBase 的 Reviewer 负责 ``定理语句未被篡改、无 \code{sorry}、无作弊 tactic''，这属于\textbf{安全性}而非能力 \cite{axprover}。值得项目抄的是：把 ``是否作弊'' 与 ``是否证出'' 分成两个独立判定。
+  \item \textbf{critic 的价值在于偏好而非判定。}InternLM2.5-StepProver 的 critic 提供运行时偏好引导搜索，把 59.4\% 提到 65.9\% \cite{internlm}。
+  \item \textbf{``反思'' 需要被显式设计。}ReCent-Prover 的 ``验证时带反思'' 先审视自己生成的 tactic、识别潜在误用并写失败摘要，再进入下一轮 \cite{recent}。这是可以直接用 prompt 实现的低成本改进。
+  \item \textbf{记忆要压缩成可读条目。}AxProverBase 的 Memory 把失败教训总结成 ``实验记录本'' 以防重复犯错 \cite{axprover}；直接塞历史轨迹会迅速耗尽上下文。
+\end{itemize}
+
+\subsection{检索与前提选择}
+
+\begin{itemize}
+  \item \textbf{检索质量确实传递到证明成功率}。LeanSearch v2 在固定 prover 回路的对照实验中：20\%（LeanSearch v2）vs 16\%（次优）vs 4\%（无检索）\cite{leansearchv2}。这是本文档中\textbf{最干净的一组消融}。
+  \item \textbf{从 ``找声明'' 升级到 ``找整套前提''}。LeanSearch v2 的 global premise retrieval 与 DRIFT 的 ``先分解再检索'' 都基于同一观察：非形式语句与 Mathlib 定理之间没有直接映射，必须先拆子组件才能检索到正确前提 \cite{leansearchv2,drift}。
+  \item \textbf{前提选择已经成为独立子领域}，本地文献库编号 101--122 的 22 篇全部属于此（LeanSearch v2、Lean Finder、LeanExplore、LeanPremise、REAL-Prover、DreamProver、DRIFT、MathlibLemma、Semantic Search over 9M theorems 等）。其中 MathlibLemma 报告用 LLM 管线产出 1506 条 Lean 校验过的 ``folklore'' 引理，并把 4028 条非平凡语句做成基准 \cite{mathliblemma}。
+  \item \textbf{库的结构本身值得研究}。Mathlib 的依赖网络分析给出 308{,}129 个声明、840 万条边、7{,}563 个模块；人类分类与逻辑结构有 50.9\% 的耦合偏差；开发者平均只用到导入作用域的 1.6\% \cite{mathlibnet}。这解释了为什么 ``全量 Mathlib 检索'' 效果差、而 ``精准前提检索'' 效果好的结构性原因。
+  \item \textbf{对项目的含义}：如果第一版不做检索，就等于放弃了文献中最确定的增益项（+16 个百分点绝对值）。但检索会引入一个重依赖（索引 + 服务），需要权衡。折中方案是先接 \textbf{LeanSearch 的公开 API}（\code{leansearch.net}）\cite{leansearchv2} 或 MCP，而不是自建索引。
+\end{itemize}
+
+\subsection{验证协议与作弊面}\label{sec:verify}
+
+\paragraph{必须审计的五类绕过手段。}
+\begin{enumerate}
+  \item \code{sorry} / \code{admit} / \code{by\_contra!} 类的\textbf{未完成占位}；
+  \item \textbf{新增公理}（\code{axiom}）或引入 \code{Classical.choice} 之外的非常规公理；
+  \item \textbf{修改定理语句}（把命题改弱、加隐含前提、改量词）；
+  \item \textbf{\code{native\_decide}} 等把可信基扩展到编译器/运行时的 tactic；
+  \item \textbf{把目标搬进更容易的类型}（例如借助 \code{False} 消解、或利用不一致的本地上下文）。
+\end{enumerate}
+
+\paragraph{已有的可抄做法。}
+\begin{itemize}
+  \item \textbf{定理语句逐字比对}：AxProverBase 的 Reviewer 显式检查 statement preservation \cite{axprover}。
+  \item \textbf{公理审计}：FTAP 的形式化把 ``每个主定理的公理被 build 强制钉死到 Mathlib 的经典默认集'' 做成了构建期闸门，并且全库 \code{sorry}-free、toolchain 固定可复现 \cite{ftap}。这是目前见到的\textbf{最严格的工程化验证协议}，值得直接借用其形式（build-enforced axiom gate）。
+  \item \textbf{kernel 作为唯一闸门}：\code{unsorry} 的设计原则是 ``仓库是队列、kernel 是裁判''，CI 的 Gate A 复验后才自动合并 \cite{unsorry}。
+  \item \textbf{证明绕过筛查}：MathlibLemma 对 1506 条 Lean 校验证明额外做 ``proof-bypass screen'' \cite{mathliblemma}。
+\end{itemize}
+
+\subsection{成本、时间与 ``迭代 vs 采样''}
+
+\begin{itemize}
+  \item \textbf{迭代优于多次单发}：AxProverBase 明确报告迭代式相对多次单发在样本效率与成本上的一致优势 \cite{axprover}。
+  \item \textbf{查询预算的差距是数量级的}：ProofAug 用每题 2100 次查询达到 66.0\%，而此前 SOTA 用 16384 次查询才 56.1\% \cite{proofaug}。这说明\textbf{单位查询的产出}可以差一个数量级——报告 \code{pass@k} 而不报查询数是没有意义的。
+  \item \textbf{搜索复杂度并非必需}：BFS-Prover 用相对简单的 best-first 就在 7B 上达到 72.95\%，挑战了 ``必须 MCTS/价值网络'' 的成见 \cite{bfsprover}。对算力有限的项目，这是好消息。
+  \item \textbf{零成本端点是现实的}：lean-prover 用免费 27B 端点跑出 68/100、成本 \$0 \cite{leanproverrepo}。
+\end{itemize}
+
+\subsection{工程基础设施：MCP 已成为事实标准}
+
+\begin{itemize}
+  \item \textbf{MCP（Model Context Protocol）} 在 2025--2026 年成为 Lean 工具接入 LLM 的统一方式。Numina-Lean-Agent 明确把 ``MCP 使工具扩展与自主调用成为可能、避免复杂设计'' 作为其范式选择的理由之一 \cite{numina}；LeanExplore 直接提供 MCP 集成 \cite{leanexplore}；\code{lean-lsp-mcp} 提供 goals/diagnostics/LeanSearch/Loogle/Lean Finder/Lean Hammer 的工具层。
+  \item \textbf{程序化 proof state 控制}：PyPantograph 提供 tactic 执行、proof state 管理与整文件检查 \cite{pantograph}；需要比 ``整文件编译'' 更细的控制时这是必要条件。
+  \item \textbf{端到端评测框架}：LeanDojo-v2 覆盖训练/评测/部署，但依赖 PyTorch/CUDA，偏重 \cite{leandojo}。
+  \item \textbf{重要的反面证据}：Numina-Lean-Agent 的主张是\textbf{直接用一个通用编码 agent 当形式数学推理器}，理由是 ``换更强的基座模型即可提升，无需训练''，并用 Claude Code + Numina-Lean-MCP 在 Putnam 2025 上 12/12 \cite{numina}。这与 ``必须自研多 Agent 编排'' 的直觉相反。
+\end{itemize}
+
+\subsection{一个必须写清楚的张力：多 Agent 到底带来了什么}
+
+把上文的证据合起来看，会得到一个与项目原计划\textbf{部分冲突}的结论：
+
+\begin{tcolorbox}[colback=white,colframe=warnred,boxrule=0.6pt,arc=2pt,left=8pt,right=8pt,top=6pt,bottom=6pt]
+\small
+\textbf{观察}：2026 年最强的两个公开结果分别来自两条相反的路：
+\begin{itemize}
+  \item \textbf{多组件流水线}：Hilbert（4 组件 + 递归分解）99.2\% / 70.0\% \cite{hilbert}；Seed Prover 1.5（NL 证明器 + Sketch + Agentic Prover 递归）IMO 35/42 \cite{seedprover}；AI4Math T2（6 子代理 + 确定性状态机）\cite{ai4math}。
+  \item \textbf{单一通用代理}：Numina-Lean-Agent（Claude Code + MCP）Putnam 2025 12/12 \cite{numina}。
+\end{itemize}
+\textbf{解读}：多 Agent 的收益主要来自\textbf{上下文隔离}与\textbf{确定性控制}，而不是 ``角色数量''。当基座模型足够强、且工具接口足够好时，单代理 + 好工具可以达到同等水平；当基座模型较弱（如本项目第一版要用的 Flash）时，\textbf{上下文隔离的价值上升}，因为弱模型最容易被长上下文里的无关信息带偏。
+\end{tcolorbox}
+
+这个解读对项目是\textbf{有利}的：它说明 ``弱模型 + 严格编排'' 是有理论依据的路线，而不是无奈之举；但同时警告：\textbf{如果角色划分不能带来上下文隔离或可测量的贡献，它就只是开销}。这也正是 \code{AGENT.md} 第 5.4 节 ``避免角色扮演式多 Agent'' 的量化依据。
+
+%========================================================
+\section{对本项目的启示与建议}
+
+\subsection{级联原型的文献依据}\label{sec:cascade}
+
+\code{AGENT.md} 第 5 节的 L0--L4 级联与文献中的分工高度一致，且每个层级都有可直接引用的证据：
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{1.1cm}p{3.4cm}p{9.8cm}@{}}
+\toprule
+\textbf{层} & \textbf{建议实现} & \textbf{文献依据} \\
+\midrule
+L0 & tactic cascade & lean4-skills 的 \code{rfl} $\rightarrow$ \code{simp} $\rightarrow$ \code{ring} $\rightarrow$ \code{linarith} $\rightarrow$ \code{nlinarith} $\rightarrow$ \code{omega} $\rightarrow$ \code{exact?} $\rightarrow$ \code{apply?} $\rightarrow$ \code{grind} $\rightarrow$ \code{aesop} 顺序；Lean Copilot 报告自动完成 74.2\% 步数（aesop 40.1\%）\cite{leancopilot} \\
+L1 & Prover $\leftrightarrow$ Lean 反馈 & AxProverBase 的 Proposer/Compiler 回路 \cite{axprover}；Lean-STaR 的 ``先思考再给 tactic'' \cite{leanstar} \\
+L2 & 检索 + Critic & LeanSearch v2 的 20\% vs 4\% 消融 \cite{leansearchv2}；ReCent-Prover 的反思式验证 \cite{recent}；InternLM critic +5.5 点 \cite{internlm} \\
+L3 & Planner + 递归分解 & Seed Prover 1.5 的 Sketch + 递归 \cite{seedprover}；Hilbert 的递归子目标 \cite{hilbert}；POETRY 的 \code{sorry} 延后 \cite{poetry} \\
+L4 & 多候选 / 升级模型 & Goedel-V2 的自纠错模式 88.1\%$\rightarrow$90.4\% \cite{goedelv2}；Bourbaki 的 7B 集成 \cite{bourbaki} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{一个必须纠正的预期}
+
+\code{AGENT.md} 摘要写 ``DeepSeek Flash 数学能力有限，Agent 结构必须补足知识与搜索能力''。调研结论是：\textbf{这个判断部分过时}。V4-Flash 在 AIME 2026 上 96.7\% \cite{layerlens}，单发非形式数学能力并不弱；弱的是\textbf{形式化}（精确语法、库内声明名、类型错误定位）与\textbf{长程一致性}。因此 ``Agent 结构'' 要补的不是 ``数学知识''，而是：
+
+\begin{enumerate}
+  \item \textbf{形式语法正确性}（靠编译器反馈闭环，而不是靠模型记性）；
+  \item \textbf{库内定位}（靠检索，而不是靠模型记忆 Mathlib 声明名）；
+  \item \textbf{长程一致性}（靠子目标分解 + 逐步验证，而不是靠一次生成）。
+\end{enumerate}
+
+这个区别会直接改变 prompt 设计：不要指望模型 ``想起'' 引理名，而要让它\textbf{先检索再引用}。
+
+\subsection{五个可做的差异化方向}
+
+在 ``已有工作已经很强'' 的前提下，项目需要找到不被碾压的切入点。以下是调研中浮现的、\textbf{仍显空白且与弱模型策略相容}的方向：
+
+\begin{enumerate}
+  \item \textbf{弱模型下的成本--准确率 Pareto 曲线}。现有工作几乎都在追最高通过率，很少系统报告 ``同等预算下弱模型 + 编排'' 的曲线。lean-prover 的 \$0 / 68 分 \cite{leanproverrepo} 与 ProofAug 的查询效率对比 \cite{proofaug} 说明这个维度有真实空间。
+  \item \textbf{上下文预算的算法}。多 Agent 的核心价值是上下文隔离（\S\ref{sec:cascade}），但 ``如何决定把哪一段 Lean 文件、哪些历史错误、哪几个检索结果放进当前角色的 prompt'' 目前都是工程 trick，没有公开的算法化处理。
+  \item \textbf{失败诊断的分类学与可操作化}。ReCent-Prover 的失败摘要 \cite{recent}、AxProverBase 的实验记录本 \cite{axprover} 都是萌芽。把 Lean 错误系统性地归到 ``缺引理 / 类型不匹配 / 需要归纳 / 需要换策略 / 语句理解错'' 并度量每类的修复率，是有价值的实证工作。
+  \item \textbf{引理库的跨题迁移是否真实有效}。LEGO-Prover 报告库带来 +3.3 点 \cite{lego}、DreamProver 用 wake--sleep 演化库 \cite{dreamprover}、CircuitProver 报告库减少 16.3\% 证明长度 \cite{circuitprover}。但这些都是在\textbf{强基线}上做的。在弱模型上，库的收益/噪音比是否更有利，尚无公开答案。这也正好衔接项目此前 ``引理库/前提选择'' 的积累（\code{arxiv论文} 编号 101--122）。
+  \item \textbf{中文/教学场景的形式化}。现有 benchmark 与系统全部面向英文与竞赛题。若项目的 App 目标包含中文用户，这是一个无人竞争的方向（但需注意 ProofNet/\allowbreak FormalMATH 的领域偏置 \cite{proofnet,formalmmath}）。
+\end{enumerate}
+
+\subsection{建议的最小可行路线（P0--P1）}
+
+基于上述，建议把 \code{AGENT.md} 第 12 节的计划\textbf{收紧}为：
+
+\begin{enumerate}
+  \item \textbf{环境}：新建 Lean 工程，\code{lean-toolchain} 锁 \code{leanprover/lean4:v4.21.0}，直接复用本机已编译的 Mathlib（2687 个 olean，2.31 GB）——这一步在本机已具备条件，无需重新下载编译。
+  \item \textbf{单题回路}：实现 ``生成 $\rightarrow$ \code{lake env lean} $\rightarrow$ 解析诊断 $\rightarrow$ 修复''，先不引入任何 LLM 角色划分，只做一条 loop。目标：10 道 miniF2F 上跑通端到端并产出 JSONL。
+  \item \textbf{基线}：加 L0 tactic cascade，与 ``裸 LLM loop'' 对比，量化 cascade 的贡献。
+  \item \textbf{反馈升级}：把诊断从 ``stderr 文本'' 换成 \textbf{结构化 goal state}（接 \code{lean-lsp-mcp} 或 PyPantograph）\cite{pantograph}，度量增益。
+  \item \textbf{检索}：在固定回路下接 LeanSearch 公开 API，复现 LeanSearch v2 报告的那组 ``有/无检索'' 消融 \cite{leansearchv2}。
+  \item \textbf{再谈多 Agent}：只有在第 4、5 步证明 ``上下文隔离'' 带来可测量收益后，才引入 Planner/Critic 角色。
+\end{enumerate}
+
+这个顺序的关键是\textbf{先证明每一层有效，再增加角色}——与 \S\ref{sec:cascade} 的张力结论一致。
+
+\subsection{待验证清单}
+
+以下事项本报告无法确认，必须由项目自己实测（与 \code{AGENT.md} 第 11 节 ``尚未决定的问题'' 合并）：
+
+\begin{enumerate}
+  \item V4-Flash 的工具调用、JSON 输出、长上下文稳定性与计费（\S4.4）。
+  \item 本机 Mathlib v4.21.0 与目标 Lean 工程的兼容性，以及是否需要重建缓存。
+  \item miniF2F 的 Lean 4 版本在本地能否逐题编译通过（历史上有语句随 Mathlib 演进而失效的问题）。
+  \item 中文 LaTeX / Lean 混排环境下诊断信息的编码问题（Windows 控制台编码曾导致本报告的数据抽取失败，见附录 A）。
+  \item PutnamBench 的准确总数与版本（658 或 660，\S\ref{sec:incomparable}）。
+\end{enumerate}
+
+%========================================================
+\section{结论}
+
+\begin{enumerate}
+  \item \textbf{架构上，2026 年的主流是 ``确定性编排 + 受限 LLM 角色''}，不是自由对话式多 Agent。角色划分的价值来自上下文隔离与可测量贡献，而不是角色数量；Hilbert、Seed Prover 1.5、AI4Math T2 与 Numina-Lean-Agent 分别从两个方向证实了这一点。
+  \item \textbf{结果上，miniF2F 已经饱和}（99.2\%），真正区分系统的是 PutnamBench、FormalMATH、TaoBench、FATE-X 这类\textbf{分布外 / 高依赖深度}的基准；而且文献中的 \code{pass@k} 与预算差异巨大，任何跨系统比较都必须先对齐口径。
+  \item \textbf{DeepSeek 的两条线要分开看}：非形式数学（V4-Flash，AIME 2026 96.7\%）已经很强，形式化（Prover-V2 671B）强但已被小模型超越。项目用 Flash 是合理的，但要把它的角色定义为\textbf{规划者/批评者/修复者}，而不是 \textbf{Lean 代码生成者}。
+  \item \textbf{最确定的两个增益项是 ``结构化反馈'' 和 ``检索''}，分别有 AxProverBase 与 LeanSearch v2 的干净消融支撑；最不确定的是 ``引理库/记忆''，它在强基线上有效，在弱基线上待验证——而这恰好是项目可能做出差异的地方。
+  \item \textbf{下一件该做的事不是搭框架}，而是把 ``10 道 miniF2F 上的端到端回路 + JSONL 日志'' 跑通，用真实数字替换本报告中的所有引用数字。
+\end{enumerate}
+
+%========================================================
+\appendix
+
+\section{数据来源与可复现性}
+
+\begin{itemize}
+  \item \textbf{本地文献}：仓库 \code{arxiv论文/} 下 \code{harvest\_all.json}（1225 条 arXiv 记录）提供 100 篇的题录与摘要。
+  \item \textbf{中间产物}：本目录下 \code{abstracts.txt}（95 条关键论文摘要）、\code{abstracts.json}（结构化版本）、\code{missing\_pdf\_text.json}（9 篇不在题录中的论文的首页文本：DreamProver、REAL-Prover、DRIFT、Premise Selection for a Lean Hammer、Semantic Search over 9M Theorems、Machine-Learned Premise Selection for Lean、Graph Sequence Learning、Millions of Lemmas、Textual+Structural Premise Selection）。
+  \item \textbf{外部来源}：arXiv 官方 \code{abs} 页面（DeepSeekMath、DeepSeek-R1、DeepSeek-V3、DeepSeek-V4、Kimina-Prover、AxProverBase）；ICLR 2026 论文集页面（Hilbert、Goedel-Prover-V2）；ICML 2026 workshop 页面（AI4Math Track 2）；ByteDance Seed 官方博客（Seed Prover 1.5）；LayerLens 第三方评测（DeepSeek V4 Flash on AIME 2026）。
+  \item \textbf{GitHub}：通过 \code{api.github.com} 读取仓库元数据（stars / license / pushed\_at / archived / description），通过 \code{github.com/<repo>/raw/<branch>/README.md} 读取 README。\textbf{注意}：本环境的 \code{web\_fetch} 对 \code{github.com} 与 \code{raw.githubusercontent.com} 解析到非公网地址而失败，因此全部 GitHub 数据由 PowerShell 直连取得；\code{api.github.com} 的匿名配额为 60 次/小时，查询 24 个仓库后耗尽，故 README 改用网页 raw 路径。
+  \item \textbf{一个已修复的环境问题}：会话开始时工作区 \code{D:\textbackslash bianma\textbackslash code\textbackslash 大创2} 因缺少 \code{WRITE\_OWNER} 导致所有 shell 命令失败；已通过权限诊断脚本为当前用户补齐完全控制（文件内容与所有者未改动，备份与回滚脚本位于 \code{D:\textbackslash bianma\textbackslash code\textbackslash dsh-acl-recovery}）。另：Windows 控制台默认 GBK 编码曾导致 Python 输出中文/特殊符号时抛 \code{UnicodeEncodeError}，故所有抽取脚本改用 \code{-X utf8} 与 \code{sys.stdout.reconfigure(encoding='utf-8')}。
+\end{itemize}
+
+\section{未核实与存在冲突的数字}
+
+\begin{enumerate}
+  \item \textbf{PutnamBench 总数}：Hilbert 写 660，DeepSeek-Prover-V2 写 658。本报告两处均按原文引用，未做统一。
+  \item \textbf{SeedProver 在 PutnamBench 上的成绩}：Seed 官方称 1.5 版解出 ``full PutnamBench 的 88\%'' \cite{seedprover}；Hilbert 论文称 ``SeedProver 50.4\%'' \cite{hilbert}。两者\textbf{很可能评估对象不同}（不同版本或不同预算），本报告无法从摘要层判定，故并列呈现。
+  \item \textbf{DeepSeek-V4-Flash 的 ``输出冗长''}：该说法来自第三方网关博客标题（\emph{Cheap, Verbose, Matches V4 Pro at Math}），正文未能取得，\unverified{冗长程度与 token 效率}。
+  \item \textbf{V4-Flash 在形式化任务上的表现}：目前\textbf{没有任何}公开评测把 V4-Flash 放到 Lean 证明任务上。本报告 \S4.4 的四条判断是基于 ``AIME 96.7\% + 无形式化专用训练'' 的推断，\unverified{实际 Lean 通过率}。
+  \item \textbf{Goedel-Prover-V2 的 PutnamBench 换算是本报告做的}：86 题@184 换算为 ``13.1\%'' 是为与 AxProverBase 的百分比对照，原文只给题数。
+  \item \textbf{Agent 各角色的边际贡献}：除 InternLM2.5-StepProver 的 critic（+5.5 点）\cite{internlm} 与 LeanSearch v2 的检索（+16 点绝对值 / 4\%$\rightarrow$20\%）\cite{leansearchv2} 外，其余系统的角色级消融多未在摘要层给出，需读全文。
+  \item \textbf{本报告未覆盖}：AlphaProof（Nature 2025）与 Aristotle（Harmonic）等闭源系统的细节，仅通过二手材料知晓其存在与量级；自动形式化方向（本地文献 001--010、079--085）仅在与证明闭环相关处提及，未做系统展开。
+\end{enumerate}
+
+%========================================================
+\begin{thebibliography}{99}
+\small
+\setlength{\itemsep}{0pt}
+
+\bibitem{lean4} L.~de Moura, S.~Ullrich. The Lean 4 Theorem Prover and Programming Language. CADE-28, 2021. DOI:10.1007/978-3-030-79876-5\_37.
+
+\bibitem{mathlib} The mathlib Community. The Lean mathematical library. CPP 2020. arXiv:1910.09336.
+
+\bibitem{minif2f} K.~Zheng, J.~M.~Han, S.~Polu. MiniF2F: a cross-system benchmark for formal Olympiad-level mathematics. arXiv:2109.00110.
+
+\bibitem{gptf} S.~Polu, I.~Sutskever. Generative Language Modeling for Automated Theorem Proving. arXiv:2009.03393.
+
+\bibitem{pact} J.~M.~Han, J.~Rute, Y.~Wu, E.~W.~Ayers, S.~Polu. Proof Artifact Co-training for Theorem Proving with Language Models. arXiv:2102.06203.
+
+\bibitem{hypertree} G.~Lample, M.-A.~Lachaux, T.~Lavril, et al. HyperTree Proof Search for Neural Theorem Proving. arXiv:2205.11491.
+
+\bibitem{thor} A.~Q.~Jiang, W.~Li, S.~Tworkowski, et al. Thor: Wielding Hammers to Integrate Language Models and Automated Theorem Provers. arXiv:2205.10893.
+
+\bibitem{magnushammer} M.~Miku{\l}a, S.~Tworkowski, S.~Antoniak, et al. Magnushammer: A Transformer-Based Approach to Premise Selection. arXiv:2303.04488.
+
+\bibitem{baldur} E.~First, M.~N.~Rabe, T.~Ringer, Y.~Brun. Baldur: Whole-Proof Generation and Repair with Large Language Models. arXiv:2303.04910.
+
+\bibitem{dsp} A.~Q.~Jiang, S.~Welleck, J.~P.~Zhou, et al. Draft, Sketch, and Prove: Guiding Formal Theorem Provers with Informal Proofs. arXiv:2210.12283.
+
+\bibitem{leandojo} K.~Yang, A.~M.~Swope, A.~Gu, et al. LeanDojo: Theorem Proving with Retrieval-Augmented Language Models. arXiv:2306.15626.
+
+\bibitem{copra} A.~Thakur, G.~Tsoukalas, Y.~Wen, J.~Xin, S.~Chaudhuri. An In-Context Learning Agent for Formal Theorem-Proving (COPRA). arXiv:2310.04353.
+
+\bibitem{dsprover} H.~Xin, D.~Guo, Z.~Shao, et al. DeepSeek-Prover: Advancing Theorem Proving in LLMs through Large-Scale Synthetic Data. arXiv:2405.14333.
+
+\bibitem{poetry} H.~Wang, H.~Xin, Z.~Liu, et al. Proving Theorems Recursively (POETRY). arXiv:2405.14414.
+
+\bibitem{lego} H.~Wang, H.~Xin, C.~Zheng, et al. LEGO-Prover: Neural Theorem Proving with Growing Libraries. arXiv:2310.00656.
+
+\bibitem{leanstar} H.~Lin, Z.~Sun, S.~Welleck, Y.~Yang. Lean-STaR: Learning to Interleave Thinking and Proving. arXiv:2407.10040.
+
+\bibitem{internlm} Z.~Wu, S.~Huang, Z.~Zhou, et al. InternLM2.5-StepProver: Advancing Automated Theorem Proving via Critic-Guided Search. arXiv:2410.15700.
+
+\bibitem{bfsprover} R.~Xin, C.~Xi, J.~Yang, et al. BFS-Prover: Scalable Best-First Tree Search for LLM-based Automatic Theorem Proving. arXiv:2502.03438.
+
+\bibitem{kimina} H.~Wang, M.~Unsal, X.~Lin, et al. Kimina-Prover Preview: Towards Large Formal Reasoning Models with Reinforcement Learning. arXiv:2504.11354.
+
+\bibitem{dsprov2} Z.~Z.~Ren, Z.~Shao, J.~Song, et al. DeepSeek-Prover-V2: Advancing Formal Mathematical Reasoning via Reinforcement Learning for Subgoal Decomposition. arXiv:2504.21801.
+
+\bibitem{goedelv2} Y.~Lin, S.~Tang, B.~Lyu, et al. Goedel-Prover-V2: Scaling Formal Theorem Proving with Scaffolded Data Synthesis and Self-Correction. ICLR 2026.
+
+\bibitem{hilbert} S.~Varambally, T.~Voice, Y.~Sun, Z.~Chen, R.~Yu, K.~Ye. Hilbert: Recursively Building Formal Proofs with Informal Reasoning. ICLR 2026.
+
+\bibitem{seedprover} ByteDance Seed. Seed Prover 1.5: Advanced Mathematical Reasoning through a Novel Agentic Architecture. 2025-12-24. Tech report arXiv:2512.17260.
+
+\bibitem{ai4math} B.-H.~Hwang, J.~La, C.-h.~Lee, H.~Lim. Technical Report for AI4Math-2026 Track 2: Mechanically Orchestrated LLM Sub-Agents for Theorem Proving in Lean 4. ICML 2026 Workshop (3rd AI for Math).
+
+\bibitem{axprover} B.~Requena, A.~Letson, K.~Nowakowski, I.~Beltran-Ferreiro, L.~Sarra. A Minimal Agent for Automated Theorem Proving. ICML 2026. arXiv:2602.24273.
+
+\bibitem{numina} J.~Liu, Z.~Zhou, Z.~Zhu, et al. Numina-Lean-Agent: An Open and General Agentic Reasoning System for Formal Mathematics. arXiv:2601.14027.
+
+\bibitem{oprover} D.~Ma, K.~Ma, S.~Guo, et al. OProver: A Unified Framework for Agentic Formal Theorem Proving. arXiv:2605.17283.
+
+\bibitem{recent} Y.~Sun, C.~Shi, H.~Lyu, Y.~Xiong. On Reasoning-Centric LLM-based Automated Theorem Proving (ReCent-Prover). arXiv:2604.19558.
+
+\bibitem{bourbaki} M.~Zimmer, X.~Ji, R.~Tutunov, et al. Bourbaki: Self-Generated and Goal-Conditioned MDPs for Theorem Proving. arXiv:2507.02726.
+
+\bibitem{proofaug} H.~Liu, J.~Sun, Z.~Li, A.~C.~Yao. ProofAug: Efficient Neural Theorem Proving via Fine-grained Proof Structure Analysis. ICML 2025. arXiv:2501.18310.
+
+\bibitem{leanauto} Y.~Qian, J.~Clune, C.~Barrett, J.~Avigad. Lean-auto: An Interface between Lean 4 and Automated Theorem Provers. arXiv:2505.14929.
+
+\bibitem{leansmt} A.~Mohamed, T.~Mascarenhas, H.~Khan, et al. Lean-SMT: An SMT tactic for discharging proof goals in Lean. arXiv:2505.15796.
+
+\bibitem{leanhammer} T.~Zhu, J.~Clune, J.~Avigad, A.~Q.~Jiang, S.~Welleck. Premise Selection for a Lean Hammer. ICLR 2026. arXiv:2506.07477.
+
+\bibitem{leansearchv2} G.~Gao, Z.~Sun, J.~Jiang, et al. LeanSearch v2: Global Premise Retrieval for Lean 4 Theorem Proving. arXiv:2605.13137.
+
+\bibitem{leanfinder} J.~Lu, K.~Emond, K.~Yang, et al. Lean Finder: Semantic Search for Mathlib That Understands User Intents. arXiv:2510.15940.
+
+\bibitem{leanexplore} J.~Asher. LeanExplore: A search engine for Lean 4 declarations. arXiv:2506.11085.
+
+\bibitem{realprover} Z.~Shen, N.~Huang, F.~Yang, et al. REAL-Prover: Retrieval Augmented Lean Prover for Mathematical Reasoning. arXiv:2505.20613.
+
+\bibitem{dreamprover} Y.~Zhang, J.~Sun, H.~Bi, et al. DreamProver: Evolving Transferable Lemma Libraries via a Wake-Sleep Theorem-Proving Agent. arXiv:2604.26311.
+
+\bibitem{circuitprover} Z.~Yang, W.~Fang, C.~Chen, Z.~Xie, H.~Zhang. CircuitProver: Agentic Lean 4 Theorem Proving with Reusable Circuit Proof Library for Hardware Verification. arXiv:2607.27259.
+
+\bibitem{drift} M.~Zhang, P.~Borchert, M.~Gritta, G.~Lampouras. DRIFT: Decompose, Retrieve, Illustrate, then Formalize Theorems. ICLR 2026. arXiv:2510.10815.
+
+\bibitem{mathliblemma} X.~Liu, Z.~Xie, A.~Moeini, et al. MathlibLemma: Folklore Lemma Generation and Benchmark for Formal Mathematics. arXiv:2602.02561.
+
+\bibitem{mathlibnet} X.~Li, N.~Peng, S.~Severini, P.~Shafto. The Network Structure of Mathlib. arXiv:2604.24797.
+
+\bibitem{formalmmath} Z.~Yu, R.~Peng, K.~Ding, et al. FormalMATH: Benchmarking Formal Mathematical Reasoning of Large Language Models. arXiv:2505.02735.
+
+\bibitem{taobench} A.~K.~Taylor, J.~Zhang, E.~Ji, et al. TaoBench: Do Automated Theorem Prover LLMs Generalize Beyond MathLib? arXiv:2603.12744.
+
+\bibitem{mathatlas} N.~Patel, N.~Arias, D.~Babayan, et al. MathAtlas: A Benchmark for Autoformalization in the Wild. arXiv:2605.14061.
+
+\bibitem{theorembench} Q.~Pham, E.~Karimov, A.~Galichin, I.~Oseledets. TheoremBench: Evaluating LLMs on Theorem Proving in Formal Mathematics. arXiv:2606.09450.
+
+\bibitem{ntp4vc} Q.~Xu, X.~Luan, R.~Wang, et al. Neural Theorem Proving for Verification Conditions: A Real-World Benchmark. arXiv:2601.18944.
+
+\bibitem{proofnet} Z.~Azerbayev, B.~Piotrowski, H.~Schoelkopf, et al. ProofNet: Autoformalizing and Formally Proving Undergraduate-Level Mathematics. arXiv:2302.12433.
+
+\bibitem{fimo} C.~Liu, J.~Shen, H.~Xin, et al. FIMO: A Challenge Formal Dataset for Automated Theorem Proving. arXiv:2309.04295.
+
+\bibitem{ftap} R.~Coelho. The Fundamental Theorem of Asset Pricing, Formalized in Lean 4. arXiv:2606.28990.
+
+\bibitem{leancopilot} P.~Song, K.~Yang, A.~Anandkumar. Lean Copilot: Large Language Models as Copilots for Theorem Proving in Lean. arXiv:2404.12534.
+
+\bibitem{vampire} F.~B\'artek, A.~Bhayat, R.~Coutelier, et al. The Vampire Diary. arXiv:2506.03030.
+
+\bibitem{enigma} Z.~A.~Goertzel, J.~Jakub\r{u}v, C.~Kaliszyk, et al. The Isabelle ENIGMA. arXiv:2205.01981.
+
+\bibitem{dlsurvey} Z.~Li, J.~Sun, L.~Murphy, et al. A Survey on Deep Learning for Theorem Proving. arXiv:2404.09939.
+
+\bibitem{autosurvey} K.~Weng, L.~Du, S.~Li, et al. Autoformalization in the Era of Large Language Models: A Survey. arXiv:2505.23486.
+
+\bibitem{deepseekmath} Z.~Shao, P.~Wang, Q.~Zhu, et al. DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models. arXiv:2402.03300.
+
+\bibitem{deepseekv3} DeepSeek-AI. DeepSeek-V3 Technical Report. arXiv:2412.19437.
+
+\bibitem{deepseekr1} DeepSeek-AI. DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning. arXiv:2501.12948. \emph{Nature} 645:633--638 (2025).
+
+\bibitem{deepseekv4} DeepSeek-AI. DeepSeek-V4: Towards Highly Efficient Million-Token Context Intelligence. arXiv:2606.19348.
+
+\bibitem{layerlens} LayerLens. DeepSeek V4 Flash on AIME 2026: 96.7\% accuracy. 2026-05-13. \url{https://layerlens.ai/blog/deepseek-v4-flash-aime2026}
+
+\bibitem{archon} Frenzymath. Archon: AI-assisted Lean project automation with DAG blueprints and multi-agent proving workflows. \url{https://github.com/frenzymath/Archon}
+
+\bibitem{unsorry} Agentics NZ. unsorry: a distributed swarm of autonomous agents proving Lean 4 theorems. \url{https://github.com/agenticsnz/unsorry}
+
+\bibitem{pantograph} Stanford CENTAUR. PyPantograph: A Machine-to-Machine Interaction System for Lean 4. \url{https://github.com/stanford-centaur/PyPantograph}
+
+\bibitem{leanproverrepo} Lean-Prover. lean-prover: an autonomous Lean 4 theorem-proving agent. \url{https://github.com/Lean-Prover/lean-prover}
+
+\end{thebibliography}
+
+\end{document}

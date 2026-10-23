@@ -17,12 +17,20 @@ build/
 *.hash
 
 # Local experiment artifacts and data
-data/raw/
-data/processed/
+data/
 outputs/
 runs/
 logs/
 *.log
+
+# miniF2F 派生物（由 scripts/gen_bench.py 生成，源在上游 checkout）
+lean/Bench/Valid/
+lean/Bench/Test/
+lean/Bench/_work/
+lean/Bench/index.jsonl
+
+# 测试临时目录
+tests/_tmp_*/
 
 # Temporary literature extraction
 arxiv论文/tmp/

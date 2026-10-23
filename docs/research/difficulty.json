@@ -1,0 +1,119 @@
+{
+ "generated_at": "2026-10-20T18:12:46",
+ "source_run": "runs\\m1-valid244b.jsonl",
+ "ladder_version": "L0-v1",
+ "lean_toolchain": "leanprover/lean4:v4.28.0-rc1",
+ "mathlib_rev": "v4.28.0-rc1",
+ "overall": {
+  "total": 244,
+  "verified": 59,
+  "pass@1": 0.2418
+ },
+ "tiers": {
+  "easy": [
+   "mathd_numbertheory"
+  ],
+  "medium": [
+   "mathd_algebra",
+   "algebra",
+   "amc12",
+   "amc12a"
+  ],
+  "hard": [
+   "aime",
+   "aimeI",
+   "aimeII",
+   "amc12b",
+   "imo",
+   "induction",
+   "numbertheory"
+  ]
+ },
+ "families": {
+  "mathd_numbertheory": {
+   "family": "mathd_numbertheory",
+   "total": 60,
+   "verified": 35,
+   "pass@1": 0.5833,
+   "tier": "easy"
+  },
+  "mathd_algebra": {
+   "family": "mathd_algebra",
+   "total": 70,
+   "verified": 17,
+   "pass@1": 0.2429,
+   "tier": "medium"
+  },
+  "algebra": {
+   "family": "algebra",
+   "total": 18,
+   "verified": 4,
+   "pass@1": 0.2222,
+   "tier": "medium"
+  },
+  "amc12": {
+   "family": "amc12",
+   "total": 5,
+   "verified": 1,
+   "pass@1": 0.2,
+   "tier": "medium"
+  },
+  "amc12a": {
+   "family": "amc12a",
+   "total": 31,
+   "verified": 2,
+   "pass@1": 0.0645,
+   "tier": "medium"
+  },
+  "aime": {
+   "family": "aime",
+   "total": 12,
+   "verified": 0,
+   "pass@1": 0.0,
+   "tier": "hard"
+  },
+  "aimeI": {
+   "family": "aimeI",
+   "total": 1,
+   "verified": 0,
+   "pass@1": 0.0,
+   "tier": "hard"
+  },
+  "aimeII": {
+   "family": "aimeII",
+   "total": 2,
+   "verified": 0,
+   "pass@1": 0.0,
+   "tier": "hard"
+  },
+  "amc12b": {
+   "family": "amc12b",
+   "total": 9,
+   "verified": 0,
+   "pass@1": 0.0,
+   "tier": "hard"
+  },
+  "imo": {
+   "family": "imo",
+   "total": 20,
+   "verified": 0,
+   "pass@1": 0.0,
+   "tier": "hard"
+  },
+  "induction": {
+   "family": "induction",
+   "total": 8,
+   "verified": 0,
+   "pass@1": 0.0,
+   "tier": "hard"
+  },
+  "numbertheory": {
+   "family": "numbertheory",
+   "total": 8,
+   "verified": 0,
+   "pass@1": 0.0,
+   "tier": "hard"
+  }
+ },
+ "caveat": "分层由 L0 自身的家族 pass@1 推出，不能用于评价 L0（循环论证）；只用于给后续实验挑规模相当的子集。家族内方差大，属粗分层。"
+}
