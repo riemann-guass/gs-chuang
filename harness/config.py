@@ -99,6 +99,34 @@ REMEDY_TIMEOUT_S = int(os.environ.get("MINIF2F_REMEDY_TIMEOUT", "2400"))
 #: 拖住整块——实测一个 60 题 L1 批次跑满 30 分钟，正好贴着 `COMPILE_TIMEOUT_S`。
 L1_MAX_HEARTBEATS = int(os.environ.get("MINIF2F_L1_MAX_HEARTBEATS", "0"))
 
+#: 终审（worker 放行后的一次批量复核）的参数。
+#: 小块 + 硬超时 + 超时保留判定：模型证明里常有极慢的 tactic，一整块 60 题撞上
+#: 1800 s 会波及 60 道已经通过的题（2026-10-24 实测把 60 题从 verified 打成 error）。
+AUDIT_CHUNK_SIZE = int(os.environ.get("MINIF2F_AUDIT_CHUNK", "40"))
+AUDIT_TIMEOUT_S = int(os.environ.get("MINIF2F_AUDIT_TIMEOUT", "600"))
+
+#: 单次 worker 判定的超时（秒）。
+#: 太短会把「慢但有效」的证明判成崩溃并触发重启（一次重启 ≈ 4–5 分钟预热），
+#: 实测 120 s 会导致每 15 分钟重启一次；300 s 更划算。
+WORKER_CHECK_TIMEOUT_S = float(os.environ.get("MINIF2F_WORKER_TIMEOUT", "300"))
+
+# ---------------------------------------------------------------- 计划 / 检索
+#: 计划在哪些尝试次数上重写（对齐 Numina-Lean-Agent 的 2^n 检查点）。
+#: 第 0 轮必定生成 v1；之后命中这些次数时带着失败历史重写。
+PLAN_CHECKPOINTS: tuple[int, ...] = (2, 4, 8)
+
+#: Loogle 的公开 JSON 接口（无需 key）。实测 `?q=Nat.add_comm` 返回 200。
+LOOGLE_URL = os.environ.get("MINIF2F_LOOGLE_URL", "https://loogle.lean-lang.org/json")
+RETRIEVAL_TIMEOUT_S = float(os.environ.get("MINIF2F_RETRIEVAL_TIMEOUT", "8"))
+#: 单轮最多发几条 query，避免把检索变成新的延迟来源。
+RETRIEVAL_MAX_QUERIES = int(os.environ.get("MINIF2F_RETRIEVAL_QUERIES", "2"))
+#: 单次检索最多注入几个候选引理。
+RETRIEVAL_MAX_HITS = int(os.environ.get("MINIF2F_RETRIEVAL_HITS", "5"))
+RETRIEVAL_CACHE = DATA_DIR / "loogle_cache.jsonl"
+
+#: 骨架里允许出现的 `sorry` 个数上限（超过视为无效，不记为进展）。
+MAX_PROOF_SORRIES = int(os.environ.get("MINIF2F_MAX_SORRIES", "1"))
+
 
 # ---------------------------------------------------------------- 计量
 def _float_env(name: str) -> float | None:

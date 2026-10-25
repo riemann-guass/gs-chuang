@@ -232,6 +232,11 @@ def cmd_eval_pipeline(args: argparse.Namespace) -> int:
         max_tokens=args.max_tokens,
         max_wall_s=args.max_wall_s,
         judge=args.judge,
+        critic=args.critic,
+        strategist=args.strategist,
+        plan=args.plan,
+        retrieval=args.retrieval,
+        allow_skeleton=args.skeleton,
         label=args.label,
         allow_test=args.allow_test,
         out_path=Path(args.out) if args.out else None,
@@ -495,6 +500,11 @@ def build_parser() -> argparse.ArgumentParser:
     p5.add_argument("--max-tokens", type=int, default=20_000, help="单题 token 预算")
     p5.add_argument("--max-wall-s", type=float, default=0.0, help="整批墙钟预算（秒，0=不限）")
     p5.add_argument("--judge", default="batch", choices=["batch", "worker"], help="L1 判定后端：batch=批量编译（真相源），worker=常驻进程加速 + 最后终审")
+    p5.add_argument("--critic", action="store_true", help="启用 Critic 角色（失败闭集分类）")
+    p5.add_argument("--strategist", action="store_true", help="启用 Strategist 角色（门控：策略类失败或连续失败≥3）")
+    p5.add_argument("--plan", action="store_true", help="启用版本化证明计划（第 0 轮生成，2/4/8 轮重写）")
+    p5.add_argument("--retrieval", action="store_true", help="在缺失引理/第二次失败后查 Loogle")
+    p5.add_argument("--skeleton", action="store_true", help="允许返回带 sorry 的可编译骨架（不算通过）")
     p5.add_argument("--allow-test", action="store_true")
     p5.add_argument("--by-family", action="store_true")
     p5.add_argument("--label", default="pipeline")

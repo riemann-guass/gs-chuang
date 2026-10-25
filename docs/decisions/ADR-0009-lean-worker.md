@@ -50,8 +50,14 @@ Mathlib Environment；`serve` 在里面轮询目录、处理请求。导入只�
 4. **目标形状必须和声明一致**。批量编译里定理参数是**局部假设**
    （`theorem foo (a : ℂ) : P a`），而 `∀ (a : ℂ), P a` 是一个 forall 目标，
    `ring` / `linarith` 会直接失败。worker 必须按参数个数逐个
-   `withLocalDeclD` 引进局部上下文（`mkGoal`），参数个数由
+   `withLocalDecl` 引进局部上下文（`mkGoal`），参数个数由
    `harness.worker.binder_count` 从头部数出来（`(a b : ℂ)` 是 **2** 个，不是 1 个）。
+5. **参数名必须保留**。第一版 `mkGoal` 用 `withLocalDeclD \`arg` 统一改名，
+   结果模型写的证明引用 `a` / `h₀` 时全部报 `Unknown identifier`——
+   **v0.5 基线因此从 121 掉到 61**（2026-10-24 实测），而 L0 级联的证明
+   不引用参数名，所以 `worker-bench` 的 244 题回归**发现不了这个问题**。
+   修法：`withLocalDecl name bi dom …`，用 `.forallE` 上原有的 binder 名与 BinderInfo。
+   **教训**：一致性测试必须覆盖「模型写的证明」，不能只覆盖级联证明。
 
 ## 一致性验收
 

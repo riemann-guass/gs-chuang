@@ -46,6 +46,47 @@ def test_only_triggered_states_are_candidates():
     assert [st.problem.problem_id for st in cands] == ["a"]
 
 
+def test_audit_timeout_keeps_worker_verdict():
+    """终审超时只说明「没验成」，不能把已验证的题降级成 error。
+
+    2026-10-24 实测：一块 60 题的终审撞上 1800 s 上限，把 60 道已经
+    通过 worker 的题全部打成 error，基线从 ~121 掉到 61。
+    """
+    from pathlib import Path
+    import shutil
+
+    work = Path(__file__).parent / "_tmp_audit_timeout"
+    if work.exists():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
+
+    def _verified(pid: str) -> "runner.ProblemState":
+        st = _state(pid)
+        st.status = "verified"
+        st.proof = "simp"
+        st.attempts[-1]["status"] = "verified"
+        return st
+
+    st = _verified("a")
+    batch = render_batch([BatchItem("a", st.problem.header, "simp")], work / "b.lean")
+    timeout = CompileResult(returncode=-1, output="", duration_ms=600000, path=batch.path)
+
+    runner._apply_audits(
+        [st], batch=batch, result=timeout, source="final-audit", keep_on_timeout=True
+    )
+    assert st.status == "verified"  # 保留 worker 的判定
+    assert "audit_timeout" in st.error_types
+    assert st.attempts[-1]["audit"] == "timeout"
+
+    # 对照：普通轮次（无既有判定）仍然标成 error，避免把超时当成「证明成功」
+    st2 = _verified("a")
+    runner._apply_audits([st2], batch=batch, result=timeout, source="L1")
+    assert st2.status == "error"
+    assert "batch_timeout" in st2.error_types
+
+    shutil.rmtree(work)
+
+
 def test_verified_clears_error_types():
     """补救成功后，旧失败类型不应留在汇总字段里。"""
     from pathlib import Path

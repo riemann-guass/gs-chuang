@@ -58,17 +58,18 @@ def usesSorry (e : Expr) : Bool :=
     | .const n _ => n == ``sorryAx
     | _ => false) |>.isSome
 
-/-- 按声明的方式建目标：先把前 `n` 个 `∀` 绑定引入**局部上下文**，再在剩余类型上开目标。
+/-- 按声明的方式建目标：把前 `n` 个绑定**用原始名字**引进局部上下文，再在剩余类型上开目标。
 
-这一步是必须的：批量编译时定理参数是局部假设（`theorem foo (a : ℂ) : P a`），
-直接拿 `∀ (a : ℂ), P a` 当目标会让 `ring` / `linarith` 这类 tactic 失败。 -/
+名字必须保留（`withLocalDecl name bi …`），不能换成 `arg`：
+模型写的证明会直接引用 `h₀`、`a` 这些参数名，改名会让它们全部变成
+`Unknown identifier`（实测 v0.5 基线因此从 121 掉到 61）。 -/
 partial def mkGoal (n : Nat) (type : Expr) : MetaM Expr := do
   if n == 0 then
     mkFreshExprMVar (some type)
   else
     match type with
-    | .forallE _ dom body _ =>
-      withLocalDeclD `arg dom fun x => do
+    | .forallE name dom body bi =>
+      withLocalDecl name bi dom fun x => do
         mkGoal (n - 1) (body.instantiate1 x)
     | _ => mkFreshExprMVar (some type)
 

@@ -26,10 +26,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from pathlib import Path
 from typing import Any
 
-from . import config
 from .cascade import cascade_proof
 from .models import Attempt, ModelError, ProposeRequest, build_model
 from .problems import Problem
@@ -295,6 +293,3 @@ def serve(
     finally:
         httpd.shutdown()
         service.stop()
-
-
-_ = (config, Path)

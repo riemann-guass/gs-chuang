@@ -1,4 +1,4 @@
-"""可插拔的模型后端。
+﻿"""可插拔的模型后端。
 
 设计目标是**离线优先**：
 
@@ -45,6 +45,23 @@ class ProposeRequest:
     #: 是否把「诊断 → 对策」提示注入 prompt（M3 的 A 组）。默认关，
     #: 这样历史运行不受后续改动影响。见 ADR-0006。
     hints: bool = False
+    #: 角色：`prover` 写 tactic；`critic` 只分类；`strategist` 只给策略。
+    #: **只有 prover 的产物会进 Lean**（写者唯一，见 `harness/roles.py`）。
+    role: str = "prover"
+    #: Critic 给出的类别，供 Strategist/Prover 的 prompt 使用
+    critic_label: str = ""
+    #: Critic 的**具体建议**。这才是 Critic 的价值所在：
+    #: v0.5 只把 `critic_label`（一个词）传下去，等于没传，A/B 因此毫无意义。
+    critic_note: str = ""
+    #: 版本化的证明计划（Planner 产出，Prover 每轮消费）
+    plan: str = ""
+    plan_version: int = 0
+    #: 检索到的候选引理（Loogle），已渲染成一行一条
+    candidates: list[str] = field(default_factory=list)
+    #: 是否允许返回「带 sorry 的可编译骨架」
+    allow_skeleton: bool = False
+    #: Strategist 给出的策略文本（不编译，只进 prompt）
+    strategy: str = ""
 
 
 @dataclass
@@ -53,6 +70,8 @@ class ModelResponse:
     tokens_in: int = 0
     tokens_out: int = 0
     raw: str = ""
+    #: 未经 `extract_proof` 处理的原文：critic/strategist 靠它解析结构化输出
+    text: str = ""
 
 
 @runtime_checkable
@@ -163,7 +182,7 @@ class DeepSeekClient:
         payload = {
             "model": self.name,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt(req.role, allow_skeleton=req.allow_skeleton)},
                 {"role": "user", "content": render_prompt(req)},
             ],
             "temperature": self.temperature,
@@ -190,7 +209,7 @@ class DeepSeekClient:
             raise ModelError("unknown", str(exc)) from exc
 
         status = resp.status_code
-        if status == 401 or status == 403:
+        if status in (401, 403):
             raise ModelError("auth", f"HTTP {status}：API key 无效或无权访问")
         if status == 429:
             raise ModelError("rate_limit", "HTTP 429：被限流")
@@ -211,6 +230,7 @@ class DeepSeekClient:
             tokens_in=int(usage.get("prompt_tokens", 0)),
             tokens_out=int(usage.get("completion_tokens", 0)),
             raw=content or "",
+            text=(content or "").strip(),
         )
 
 
@@ -219,6 +239,33 @@ SYSTEM_PROMPT = (
     "只输出可以直接接在 `:= by` 之后的 tactic 代码块，不要重复定理声明，不要解释，"
     "不要使用 sorry / admit / native_decide / axiom。"
 )
+
+
+SKELETON_SYSTEM_PROMPT = (
+    "你是 Lean 4 的 tactic 生成器。给定定理声明和当前的编译错误，"
+    "只输出可以直接接在 `:= by` 之后的 tactic 代码块，不要重复定理声明，不要解释。"
+    "**允许部分完成**：如果无法一次证完，请给出能通过编译的骨架——"
+    "已证部分写完整，卡住处只留一处 `sorry`，并用 `-- 卡在：...` 注明。"
+    "禁止 `admit` / `native_decide` / `axiom`。"
+)
+
+
+def system_prompt(role: str, *, allow_skeleton: bool = False) -> str:
+    """按角色选系统提示。未知角色退回 prover，避免静默丢角色。
+
+    `allow_skeleton` 必须传进来：prover 的默认系统提示写着「不要使用 sorry」，
+    与「允许骨架」直接冲突——v0.6 第一版就是因为这个导致 100 题里**一个骨架都没出现**。
+    """
+    from . import roles
+
+    if role in ("", "prover"):
+        return SKELETON_SYSTEM_PROMPT if allow_skeleton else SYSTEM_PROMPT
+    return {
+        "critic": roles.CRITIC_SYSTEM,
+        "strategist": roles.STRATEGIST_SYSTEM,
+        "strategy_probe": roles.PROBE_SYSTEM,
+        "planner": roles.PLANNER_SYSTEM,
+    }.get(role, SYSTEM_PROMPT)
 
 PROMPT_TEMPLATE = """## 定理声明
 ```lean4
@@ -252,6 +299,8 @@ def _hint_block(req: ProposeRequest) -> str:
 
 
 def render_prompt(req: ProposeRequest) -> str:
+    from . import roles
+
     if req.history:
         hist = "\n\n".join(
             f"尝试 {i + 1}（{a.source}, {a.status}）：\n```lean4\n{a.proof}\n```\n诊断：\n{a.diagnostics or '(无)'}"
@@ -260,12 +309,47 @@ def render_prompt(req: ProposeRequest) -> str:
     else:
         hist = "(无)"
     diagnostics = req.goals or (req.history[-1].diagnostics if req.history else "(无)")
+
+    # 非 prover 角色：各自的结构化 prompt（不做代码提取，见 roles.py）
+    if req.role == "critic":
+        # 给 Critic **完整历史**（不只最后一次）：它要判断的是"为什么一直卡住"，
+        # 只看最后一次容易把"没写完"误判成"语法错"。
+        return roles.critic_prompt(
+            req.problem.header,
+            hist,
+            diagnostics,
+        )
+    if req.role == "strategist":
+        return roles.strategist_prompt(req.problem.header, hist, req.critic_label)
+    if req.role == "strategy_probe":
+        return roles.probe_prompt(req.problem.header)
+    if req.role == "planner":
+        return roles.planner_prompt(req.problem.header, hist, req.plan)
+
+    extra = ""
+    if req.plan:
+        extra += f"\n## 证明计划（v{req.plan_version}）\n{req.plan}\n"
+    if req.candidates:
+        extra += "\n## 候选引理（检索自 Loogle，仅供参考）\n" + "\n".join(req.candidates) + "\n"
+    if req.allow_skeleton:
+        extra += (
+            "\n## 允许部分完成\n"
+            "如果一次证不完：先给出**能通过编译的骨架**——已证部分写完整，"
+            f"卡住处只留一处 `sorry`（最多 {config.MAX_PROOF_SORRIES} 个），"
+            "并用 `-- 卡在：...` 注释说明卡点。\n"
+        )
+    if req.critic_note:
+        extra += f"\n## 诊断建议（来自 Critic，供参考）\n{req.critic_note}\n"
+    elif req.critic_label and req.critic_label != "other":
+        extra += f"\n## 诊断分类\n{req.critic_label}\n"
+    if req.strategy:
+        extra += f"\n## 策略建议（供参考，不保证正确）\n{req.strategy}\n"
     return PROMPT_TEMPLATE.format(
         header=req.problem.header,
         history=hist,
         diagnostics=diagnostics,
         hints=_hint_block(req),
-    )
+    ) + extra
 
 
 #: 裸的围栏语言标签行，例如模型输出被截断时剩下的 `lean4`

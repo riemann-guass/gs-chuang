@@ -75,9 +75,8 @@ def audit_problem(
             reasons.append(f"axiom_not_allowed:{','.join(sorted(extra))}")
 
     for w in warnings:
-        if "declaration uses" in w.message and "sorry" in w.message:
-            if "sorry_ax" not in reasons:
-                reasons.append("sorry_warning")
+        if "declaration uses" in w.message and "sorry" in w.message and "sorry_ax" not in reasons:
+            reasons.append("sorry_warning")
 
     # 没有 error、没有 sorryAx、公理干净 —— 才算证完
     status = "verified" if not reasons else "failed"

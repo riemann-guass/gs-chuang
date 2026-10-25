@@ -30,24 +30,17 @@ from .leanenv import BatchItem
 _THEOREM_RE = re.compile(r"^theorem\s+", re.M)
 _NAME_RE = re.compile(r"^theorem\s+([^\s(]+)")
 
-#: miniF2F 的题目家族（前缀）。用于难度分层与分类统计。
-_KNOWN_HEADS = frozenset(
-    {"mathd", "algebra", "induction", "amc12", "amc12a", "amc12b", "aime", "aimeII", "imo", "numbertheory"}
-)
-
 
 def family_of(problem_id: str) -> str:
     """粗粒度家族名，例如 `mathd_algebra`、`induction`、`amc12a`。
 
     miniF2F 的 id 形如 `mathd_algebra_10` / `amc12a_2002_p1` / `induction_sum_odd`，
-    前两段合起来才是家族；其余取第一段。
+    `mathd_*` 取前两段合起来作为家族；其余取第一段。
     """
     parts = problem_id.split("_")
     head = parts[0]
     if head == "mathd" and len(parts) > 1:
         return f"mathd_{parts[1]}"
-    if head in _KNOWN_HEADS:
-        return head
     return head
 
 

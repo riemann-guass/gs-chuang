@@ -27,9 +27,8 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
+import re
 import subprocess
-import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,6 +41,11 @@ WORKER_FILE = "Worker.lean"
 
 class WorkerError(RuntimeError):
     pass
+
+
+def count_sorries(proof: str) -> int:
+    """数证明文本里 `sorry` 的个数（骨架的"剩余义务"）。只数独立单词。"""
+    return len(re.findall(r"\bsorry\b", proof or ""))
 
 
 def classify_worker_error(message: str) -> str:
@@ -77,6 +81,18 @@ class WorkerResult:
     error: str = ""
     latency_ms: float = 0.0
     raw: dict = field(default_factory=dict)
+    #: 证明文本里 `sorry` 的个数（允许部分完成时用来衡量进展）
+    sorries: int = 0
+
+    @property
+    def compiles(self) -> bool:
+        """**能编译**：要么完全证完，要么是带 sorry 的骨架（没有真实错误）。
+
+        注意：`compiles` 不等于 `ok`。骨架可以编译，但绝不能算通过。
+        """
+        if self.error:
+            return False
+        return bool(self.ok or self.sorry)
 
     @property
     def reason(self) -> str:
@@ -181,12 +197,9 @@ class LeanWorker:
         self.lean_dir = Path(lean_dir or config.LEAN_ROOT)
         # 默认放进工作区（`lean/Bench/_work/_worker`）：系统临时目录在沙箱下可能不可写，
         # 而且放在仓库里便于事后看请求/响应文件。
-        if work_dir is None:
-            self.work_dir = Path(config.WORK_DIR) / "_worker"
-            self._owns_dir = False
-        else:
-            self.work_dir = Path(work_dir)
-            self._owns_dir = False
+        self.work_dir = (
+            Path(work_dir) if work_dir is not None else Path(config.WORK_DIR) / "_worker"
+        )
         self.startup_timeout_s = startup_timeout_s
         self.request_timeout_s = request_timeout_s
         self.poll_s = poll_s
@@ -195,6 +208,48 @@ class LeanWorker:
         self.warmup_s: float = 0.0
 
     # ------------------------------------------------------------- lifecycle
+    def _command(self) -> tuple[list[str], dict[str, str]]:
+        """优先**直接调 lean.exe**，绕开 `lake env` 包装。
+
+        为什么要绕开：`lake env lean` 会再 spawn 一个 `lean` 子进程。kill 时只杀掉
+        `lake`，`lean` 变成孤儿继续吃 3+ GB——实测重启几次后两个 lean 抢 CPU，
+        单次判定从 0.2 s 退化到几十秒，还查不出原因。
+
+        直接调需要自己拼 LEAN_PATH（Lake 的布局是可预测的），
+        拼不出来时退回 `lake env` 包装（功能正确，但 kill 可能留孤儿）。
+        """
+        lean_exe = self._lean_exe()
+        if lean_exe is None:
+            return ["lake", "env", "lean", WORKER_FILE], {}
+        lean_path = self._lean_path()
+        if lean_path is None:
+            return ["lake", "env", "lean", WORKER_FILE], {}
+        return [str(lean_exe), WORKER_FILE], {"LEAN_PATH": lean_path}
+
+    def _lean_exe(self) -> Path | None:
+        """从 `lean-toolchain` 推出 elan 里的 lean 可执行文件路径。"""
+        tc = self.lean_dir / "lean-toolchain"
+        try:
+            spec = tc.read_text(encoding="utf-8").strip()  # leanprover/lean4:v4.28.0-rc1
+            repo, _, ver = spec.partition(":")
+            if not ver:
+                return None
+            name = repo.replace("/", "--") + "---" + ver
+            exe = Path.home() / ".elan" / "toolchains" / name / "bin" / ("lean.exe" if os.name == "nt" else "lean")
+            return exe if exe.exists() else None
+        except OSError:
+            return None
+
+    def _lean_path(self) -> str | None:
+        """按 Lake 的布局拼 LEAN_PATH：各依赖的 build/lib/lean + 本项目自己的。"""
+        root = self.lean_dir
+        dirs = sorted((root / ".lake" / "packages").glob("*/.lake/build/lib/lean"))
+        dirs.append(root / ".lake" / "build" / "lib" / "lean")
+        dirs = [d for d in dirs if d.is_dir()]
+        if not dirs:
+            return None
+        return os.pathsep.join(str(d) for d in dirs)
+
     def start(self) -> None:
         self.work_dir.mkdir(parents=True, exist_ok=True)
         for old in self.work_dir.glob("req_*"):
@@ -207,8 +262,10 @@ class LeanWorker:
         # 把 Lean 自己的输出落到文件：崩溃时这是唯一的线索
         self._out = open(self.work_dir / "lean.out", "w", encoding="utf-8", errors="replace")
         self._err = open(self.work_dir / "lean.err", "w", encoding="utf-8", errors="replace")
+        cmd, extra_env = self._command()
+        env.update(extra_env)
         self.proc = subprocess.Popen(
-            ["lake", "env", "lean", WORKER_FILE],
+            cmd,
             cwd=str(self.lean_dir),
             env=env,
             stdout=self._out,
@@ -223,16 +280,36 @@ class LeanWorker:
         self.warmup_s = time.time() - t0
 
     def stop(self) -> None:
+        """杀掉整个进程树。
+
+        直接调 `lean.exe` 时 `proc.pid` 就是 lean 本身，kill 即可；
+        退回 `lake env` 包装时仍需杀树，否则会留下吃 3+ GB 的孤儿 lean。
+        """
         proc = self.proc
         self.proc = None
-        if proc is not None:
-            proc.kill()
+        if proc is None:
+            return
+        try:
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                    capture_output=True,
+                    timeout=15,
+                )
+            else:
+                proc.kill()
+        except Exception:  # noqa: BLE001
+            pass
+        # taskkill 有时静默失败（权限/竞态）：再兜底一次直接 kill，避免留下孤儿
+        if proc.poll() is None:
             try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
+                proc.kill()
+            except Exception:  # noqa: BLE001
                 pass
-        if self._owns_dir:
-            shutil.rmtree(self.work_dir, ignore_errors=True)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
 
     def __enter__(self) -> "LeanWorker":
         self.start()
@@ -265,6 +342,7 @@ class LeanWorker:
             error=str(resp.get("error", "")),
             latency_ms=(time.time() - t0) * 1000,
             raw=resp,
+            sorries=count_sorries(proof),
         )
 
     def check_problem(self, problem, proof: str) -> WorkerResult:

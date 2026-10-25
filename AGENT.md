@@ -2,7 +2,7 @@
 
 > 项目级交接文档。新 agent 接手时先完整阅读本文件，再读 `README.md` 和 `docs/`。
 > 本文件优先于旧会话中的方向性推断；旧方向已作废。
-> 最后更新：2026-10-18
+> 最后更新：2026-10-23
 
 ## 1. 项目一句话
 
@@ -10,15 +10,20 @@
 
 ## 2. 当前状态
 
-- 阶段：预研 + P0 已跑通，M1 基线已建立（2026-10-19）。
+- 阶段：**引擎 v0.1 + 常驻 worker + HTTP 服务**（2026-10-23）。细节见 §12。
 - 已有一批 ATP / Lean 相关文献，位于 `arxiv论文/`；`docs/research/multi-agent-atp-survey.pdf`
   是 2026-10-19 完成的多 Agent 定理证明调研报告（架构分类、DeepSeek 特质、基准与选型建议）。
 - 已完成一轮 GitHub 工具与 skill 调研，结论见第 7 节。
-- **Lean 4 / Mathlib 版本已定**：`leanprover/lean4:v4.28.0-rc1` + Mathlib `v4.28.0-rc1`，
-  编译环境借用本地 `D:\bianma\code\大创\sgs-reap\sgslean`（见 `docs/decisions/ADR-0001`）。
-- **已有一条可跑的回路**：批量编译 + 诊断解析 + 四项审计 + JSONL 记录（`harness/`）。
-- DeepSeek Flash API 的调用方式、上下文长度、工具调用能力**仍未验证**（缺 API key；网络已确认可用）。
-- Git 分支为 `main`。
+- **Lean 4 / Mathlib 版本已定**：`leanprover/lean4:v4.28.0-rc1` + Mathlib `v4.28.0-rc1`。
+  **编译环境已迁进本仓库的 `lean/`**（完整 Lake 包，含 6 GB olean），
+  不再依赖外部 `sgslean`（`docs/decisions/ADR-0001`）。
+- **成绩**：L0 两遍 **62/244 = 25.41%**；全流程加模型 **121/244 = 49.59%**
+  （`docs/research/v0.1-evaluation.md`）。
+- **常驻 worker 已跑通**：一次导入 60–65 s（冷缓存可达 580 s，见 ADR-0009），
+  之后每题 median 168 ms；241 题复判 0 不一致。
+- **对外接口**：`harness.prover`（库）+ `harness.cli` 10 个子命令 + `serve`（HTTP）。
+- DeepSeek API **已验证**（`probe-api`：1.3–2 s，返回合规 tactic）；思考模式必须关闭（ADR-0005）。
+- Git 分支为 `main`；最近提交 `feat: establish Lean ATP harness v0.1`。
 
 ## 3. 已确认的决策
 
@@ -303,7 +308,10 @@ rfl → simp → ring → linarith → nlinarith → omega → exact? → apply?
 - **已排除**：miniF2F 上游声明 Lean v4.24.0，本项目用 v4.28.0-rc1。
   2026-10-20 全量扫描：**488/488 题语句全部可编译**，没有版本漂移失效题
   （`scripts/compat_scan.py`，结果在 `runs/compat-scan.json`）。评测时不需要排除任何题。
-- **新发现**：`import Mathlib` 单次 ~240 s，是当前最大瓶颈；是否投入常驻 LSP（`lean --server`）。
+- ~~**新发现**：`import Mathlib` 单次 ~240 s，是当前最大瓶颈；是否投入常驻 LSP（`lean --server`）。~~
+  **已有结论（2026-10-23）**：LSP 不稳定（ADR-0007），单 exe 拿不到 Environment（ADR-0008）；
+  最终用 `run_tac` 常驻 worker 解决（ADR-0009）：一次导入 60–65 s，之后每题 0.17 s。
+  注意**冷缓存**时首次导入可达 ~580 s（实测 577.7 s），和 62 s 差近 10 倍。
 
 ## 12. 下一步（2026-10-23 更新）
 
@@ -321,8 +329,10 @@ rfl → simp → ring → linarith → nlinarith → omega → exact? → apply?
 | **v0.2** | 常驻 Lean worker | ✅ **241 题 0 不一致，median 168 ms**（ADR-0009） |
 | **v0.3** | worker 接入引擎（`--judge worker`） | ✅ 已接 L1 + 批量终审；20 题端到端验证通过 |
 | **v0.4** | 诊断通道 + HTTP 服务 | ✅ 失败消息可读（保留 Unicode）；`serve` 起服务，`/check` 43–110 ms（ADR-0010） |
-| M4 | 检索（LeanSearch API） | 未开始 |
-| M5 | Planner / Critic 多角色 | 未开始 |
+| **v0.5** | 三角色实验（Critic / Strategist） | ❌ **证否**：Critic −2 题、token +69%；策略预测 86.4% < 多数类 87.2% → 都不加（ADR-0011） |
+| **v0.6** | 版本化计划 / 骨架 / 检索（学 Numina-Lean-Agent） | ✅ **计划 +8/100（52→60）**；骨架 0 份可用、检索 +1 → 后两者默认关（ADR-0012） |
+| M4 | 检索（Loogle 已接，效果未证实） | ⚠️ 已实现，默认关闭 |
+| M5 | Planner / Critic 多角色 | Planner 已落地；Critic 证否 |
 
 **v0.1 的关键数字**（详见 `docs/research/v0.1-evaluation.md`）：
 
@@ -341,10 +351,21 @@ rfl → simp → ring → linarith → nlinarith → omega → exact? → apply?
    L1 下一轮能直接拿到反馈。
 3. ~~G5/G6 服务化~~ ✅ `python -m harness.cli serve` → `/health` `/check` `/prove`。
    实测 `/check` 43–110 ms，`/prove` 走 L0 级联 63 ms（ADR-0010）。
-4. **G4 剩余稳定性问题**：3 道题会让 worker 静默崩溃（无 Lean 报错，疑似原生栈溢出）：
-   `amc12a_2003_p1`、`mathd_numbertheory_109`、`mathd_numbertheory_543`。
-   现在靠 `worker-bench` 自动重启兜底；pipeline 路径遇到会整轮失败，需要加降级。
-5. 之后才是 M4 检索 / M5 多角色。
+4. ~~v0.5 三角色实验~~ ❌ **证否**（ADR-0011）：
+   - 干净基线 **125/244 = 51.23%**（L0 59 + 模型 66）；
+   - +Critic 在 100 题子集上 **52 vs 54（−2）**，输入 token **+69%**；
+   - 策略预测命中 86.4%，**低于全猜 direct 的 87.2%** → 没有可路由的信号。
+   **结论：Critic / Strategist 保持关闭**（代码保留，`--critic` / `--strategist` 默认不开）。
+5. **G4 剩余稳定性**：3 道题让 worker 静默崩溃（原生栈溢出）；
+   慢证明会触发超时→重启（已把 worker 超时提到 300 s、改为直连 `lean.exe` 避免孤儿）。
+6. ~~v0.6 计划 / 骨架 / 检索~~ ✅ **计划有效**（+8/100），见 ADR-0012 与
+   `docs/research/v0.6-plan-skeleton-retrieval.md`：
+   同一 100 题上 **2 轮 54 → 6 轮 52 → 6 轮+计划 60 → 再加骨架/检索 61**；
+   - **加轮数没用**（第 4–6 轮 0 通过），预算应该花在"更好的信息"上；
+   - **骨架 0 份可用**：模型在 `sorry` 之前就编译失败，写不出可编译前缀；
+   - **检索 +1**（80 次查询、102 条命中，噪声内）。
+   `--plan` 保留、`--skeleton` / `--retrieval` 默认关。
+7. 下一步：把计划重写从 2/4/8 收敛到"只重写一次"，看能否保住 +8、砍掉一半 token。
 
 **难度分层**：`docs/research/difficulty.json`
 （easy 60 题 / medium 124 / hard 60；由 L0 家族 pass@1 推出，**不能用来评价 L0**）。
@@ -461,3 +482,11 @@ rfl → simp → ring → linarith → nlinarith → omega → exact? → apply?
   新增 `harness/server.py` 与 `serve` 子命令：`/health` `/check` `/prove`，
   实测 `/check` 43–110 ms（ADR-0010）。**约定**：worker 会自动引入定理参数，
   所以证明里不要再写 `intro`。
+- 2026-10-24：**v0.6 计划 / 骨架 / 检索**（ADR-0012）。读了 Numina-Lean-Agent
+  的实现后，把"一句 Critic"换成**版本化计划**（第 0 轮生成、2/4/8 轮重写），
+  并加了骨架与 Loogle 检索。同一 100 题：2 轮 54 → 6 轮 52 → 6 轮+计划 **60**
+  → 再加骨架/检索 61。**加轮数无效**（第 4–6 轮 0 通过）；骨架 0 份可用
+  （模型写不出可编译前缀）；检索 +1（噪声内）。`--plan` 保留，另两者默认关。
+- 2026-10-25：**仓库整理**。新增 `docs/README.md`（文档索引 + 复现命令）；
+  `README.md` 重写到当前状态；无效/一次性运行记录归档到 `runs/_archive/`；
+  清理 `lean/Bench/_work` 的 63 个生成文件；`.gitignore` 覆盖测试临时文件。

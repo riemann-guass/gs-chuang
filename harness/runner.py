@@ -44,6 +44,25 @@ class ProblemState:
     #: 单题墙钟的**估计值**：每参与一个批次，就累加「批次耗时 / 该批题数」。
     #: 比 `time_ms`（累加整个批次）更接近真实，但仍然是估计。
     wall_ms: float = 0.0
+    # ---------------------------------------------------------- 黑板（多角色）
+    #: Critic 给的闭集标签，见 `harness/roles.py`
+    critic_label: str = ""
+    #: Critic 的一句话理由
+    critic_note: str = ""
+    #: Strategist 给的策略（**只进 prompt，永不直接编译**）
+    strategy: str = ""
+    #: 连续失败的轮数，用于 Strategist 的门控
+    failed_rounds: int = 0
+    # ---------------------------------------------------------- 计划与进展
+    #: 当前版本的证明计划（Planner 产出）{"outline": [...], "lemmas": [...], ...}
+    plan: dict = field(default_factory=dict)
+    plan_version: int = 0
+    #: 计划修订历史（只记版本与轮次，正文在 plan 里）
+    plan_history: list[dict] = field(default_factory=list)
+    #: 目前最好的一份**带 sorry 的可编译骨架** {"proof","sorries","at_round"}
+    best_skeleton: dict | None = None
+    #: 检索统计 {"queries": n, "hits": n, "failed": n}
+    retrieval: dict = field(default_factory=dict)
 
     def to_record(self, *, run_id: str, model_name: str) -> dict:
         return {
@@ -71,6 +90,20 @@ class ProblemState:
             "max_heartbeats": config.MAX_HEARTBEATS,
             "axioms": list(self.axioms),
             "error_types": self.error_types,
+            # 多角色的黑板字段（加法字段，schema 不变）
+            "critic": {"label": self.critic_label, "note": self.critic_note},
+            "strategy": self.strategy,
+            "failed_rounds": self.failed_rounds,
+            # 计划与部分进展（加法字段）
+            "plan": {
+                "version": self.plan_version,
+                "outline": self.plan.get("outline", []),
+                "lemmas": self.plan.get("lemmas", []),
+                "pitfalls": self.plan.get("pitfalls", ""),
+            },
+            "plan_history": self.plan_history,
+            "best_skeleton": self.best_skeleton,
+            "retrieval": self.retrieval,
             "statement_sha256": statement_sha(self.problem),
             "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
@@ -86,6 +119,7 @@ def _apply_audits(
     batch: leanenv.RenderedBatch,
     result: leanenv.CompileResult,
     source: str,
+    keep_on_timeout: bool = False,
 ) -> None:
     parsed = diagnostics.parse(result.output)
     per_problem = diagnostics.locate_spans(parsed.diagnostics, batch.spans)
@@ -107,6 +141,16 @@ def _apply_audits(
         st.time_ms += result.duration_ms
         # 单题墙钟估计：批次耗时按题数摊分（见 ADR-0003 对 time_ms 的说明）
         st.wall_ms += result.duration_ms / max(len(states), 1)
+
+        # 整块超时：这一题**没有结论**。终审时（keep_on_timeout）必须保留
+        # worker 的既有判定，否则一次 30 分钟的超时会把 60 道已经验证过的题
+        # 全部降级成 error（2026-10-24 实测踩到）。
+        if result.returncode == -1 and keep_on_timeout:
+            if "audit_timeout" not in st.error_types:
+                st.error_types.append("audit_timeout")
+            st.attempts[-1]["audit"] = "timeout"
+            continue
+
         st.attempts[-1]["status"] = report.status
         st.attempts[-1]["error_kind"] = report.error_kind
         st.attempts[-1]["diagnostics"] = "\n\n".join(d.text for d in diags)[:4000]
@@ -162,6 +206,7 @@ def _compile_chunks(
     source: str,
     extra_options: Sequence[str] = (),
     timeout_s: int | None = None,
+    keep_on_timeout: bool = False,
 ) -> None:
     """把一批题按 `chunk_size` 切块编译。
 
@@ -181,7 +226,9 @@ def _compile_chunks(
             extra_options=extra_options,
             timeout_s=timeout_s,
         )
-        _apply_audits(chunk, batch=batch, result=result, source=source)
+        _apply_audits(
+            chunk, batch=batch, result=result, source=source, keep_on_timeout=keep_on_timeout
+        )
 
 
 def run_cascade(

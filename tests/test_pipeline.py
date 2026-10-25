@@ -30,15 +30,28 @@ def _state(pid: str, *, status="failed", errors=(), tokens=0) -> "pipeline.runne
 
 
 def test_pipeline_v1_shape():
+    """阶段计划：L0 → 补救 → 每轮 `L1 → [critic] → [strategist]`。"""
     plan = pipeline.pipeline_v1(rounds=3, remediate=True)
-    assert [s.name for s in plan] == ["L0", "remedy", "L1"]
+    assert [s.name for s in plan] == ["L0", "remedy", "L1", "L1", "L1"]
     assert plan[0].triggers == frozenset()
     assert plan[1].triggers == config.REMEDY_TRIGGERS
-    assert plan[2].repeat == 3
+    assert all(s.repeat == 1 for s in plan)
 
     plan2 = pipeline.pipeline_v1(rounds=0, remediate=False)
-    assert [s.name for s in plan2] == ["L0", "L1"]
-    assert plan2[1].repeat == 0
+    assert [s.name for s in plan2] == ["L0"]
+
+    plan3 = pipeline.pipeline_v1(rounds=2, remediate=False, critic=True, strategist=True)
+    assert [s.name for s in plan3] == [
+        "L0",
+        "L1",
+        "critic",
+        "strategist",
+        "L1",
+        "critic",
+        "strategist",
+    ]
+    assert plan3[2].predicate is pipeline.needs_critic
+    assert plan3[3].predicate is pipeline.needs_strategist
 
 
 def test_run_pipeline_triggers_and_skip_verified():

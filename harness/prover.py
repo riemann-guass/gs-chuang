@@ -124,7 +124,7 @@ def prove_many(
     if model is None and budget.max_rounds > 0:
         model, _note = build_model(allow_network=allow_network)
 
-    out, states = pipeline.run_pipeline(
+    _, states = pipeline.run_pipeline(
         problems,
         model=model,
         rounds=budget.max_rounds,
@@ -136,7 +136,6 @@ def prove_many(
         allow_test=False,
         out_path=out_path,
     )
-    _ = out
     return [ProofResult.from_state(st) for st in states]
 
 

@@ -77,7 +77,7 @@ def main() -> int:
     if bad_by_family:
         print("  失效家族分布：", dict(sorted(bad_by_family.items(), key=lambda kv: -kv[1])))
     if broken:
-        print(f"\n前 15 个失效题目：")
+        print("\n前 15 个失效题目：")
         for b in broken[:15]:
             print(f"  [{b['split']}] {b['id']:<46} {b['kind']:<18} {b['message'][:80]}")
 

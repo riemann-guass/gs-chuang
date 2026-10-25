@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -55,7 +56,7 @@ def main() -> int:
     tout = sum(int(b[p].get("tokens_out", 0)) for p in common)
     rounds = [len(b[p].get("attempts", [])) for p in common]
     print(f"token   in={tin} out={tout}  平均每题输入 {tin / n:.0f}")
-    print(f"尝试次数分布 {dict(sorted(__import__('collections').Counter(rounds).items()))}")
+    print(f"尝试次数分布 {dict(sorted(Counter(rounds).items()))}")
 
     if only_b and args.show:
         print(f"\n模型补足的题（前 {args.show} 个）:")

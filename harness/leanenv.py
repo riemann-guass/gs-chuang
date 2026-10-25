@@ -143,13 +143,14 @@ def render_batch(
             lines.extend(body)
         else:
             lines.append("  sorry")
+        name = item.header.split()[1]
         axiom_line = len(lines) + 1
-        lines.append(f"#print axioms {ns}.{item.header.split()[1]}")
+        lines.append(f"#print axioms {ns}.{name}")
         lines.append(f"end {ns}")
         end = len(lines)
 
         spans[item.problem_id] = Span(start, end, axiom_line)
-        qualified[item.problem_id] = f"{ns}.{item.header.split()[1]}"
+        qualified[item.problem_id] = f"{ns}.{name}"
 
     text = "\n".join(lines) + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
